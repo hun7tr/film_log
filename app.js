@@ -4,10 +4,10 @@
   // ------------------------------------------------------------ Konstanten
   const THEMES = {
     salbei: { bar: '#EEEDE9', colors: ['#EEEDE9', '#C8C6AD', '#98503F', '#A2B08F', '#D9B2A9'], pdf: [152, 80, 63] },
-    nacht: { bar: '#000000', colors: ['#000000', '#2A0048', '#560072', '#800080', '#A90072', '#D50048', '#FF0000'], pdf: [213, 0, 72] },
+    nacht: { bar: '#000000', colors: ['#000000', '#2A0048', '#560072', '#800080', '#D50048'], pdf: [213, 0, 72] },
     nebel: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] }
   };
-  const VERSION = '0.7';
+  const VERSION = '0.8';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
@@ -377,6 +377,7 @@
     sheet.body.append(rollForm(d));
     sheet.foot.append(h('button', {
       class: 'btn primary', 'data-act': 'finish', onclick: async () => {
+        haptic();
         if (saving) return;
         saving = true;
         try {
@@ -405,7 +406,7 @@
     return f ? f + ' ' + iso : 'ISO ' + iso;
   }
   function rollRow(r, onTap, extra) {
-    const sub = [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.', r.pns ? 'Point-and-Shoot' : ''].filter(Boolean).join(', ');
+    const sub = [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.', r.pns ? 'P&S' : ''].filter(Boolean).join(', ');
     return h('button', { class: 'row' + (extra || ''), 'data-roll': r.id, onclick: onTap },
       h('span', { class: 'row-title' }, r.title),
       h('span', { class: 'row-side' }),
@@ -452,13 +453,24 @@
       const a = await ask(t('archive'), [{ label: t('newFolder'), value: 'folder' }, { label: t('importCsv'), value: 'import' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
       if (a === 'folder') { if (await createFolder()) refreshAll(); } else if (a === 'import') openImport();
     } }, icon('plus')));
-    if (kind === 'archive') sortable(sheet.body, dropInArchive);
+    sortable(sheet.body, {
+      onMove: async (key, index) => { await reorderTo(kind === 'archive' ? archiveItems() : activeItems(), key, index); refreshAll(); },
+      onInto: kind === 'archive' ? async (key, folderKey) => {
+        const r = rollById(key.slice(2));
+        if (!r) return;
+        r.folderId = folderKey.slice(2); r.order = null;
+        await DB.put('rolls', r);
+        refreshAll();
+        toast(t('saved'));
+      } : null,
+      onHold: keyMenu
+    });
     sheet.render = () => {
       sheet.setTitle(t(kind));
       if (kind === 'active') {
-        const rolls = S.rolls.filter(r => !r.archived).sort((a, b) => b.createdAt - a.createdAt);
-        if (!rolls.length) sheet.body.replaceChildren(h('p', { class: 'empty' }, t('emptyActive')));
-        else sheet.body.replaceChildren(...rolls.map(r => rollRow(r, () => openRoll(r.id))));
+        const act = activeItems();
+        if (!act.length) sheet.body.replaceChildren(h('p', { class: 'empty' }, t('emptyActive')));
+        else sheet.body.replaceChildren(...act.map(it => { const row = rollRow(it.obj, () => openRoll(it.obj.id)); row.dataset.drag = it.key; return row; }), h('p', { class: 'hint drag-hint' }, t('dragHint')));
         return;
       }
       const rolls = archivedRolls();
@@ -473,15 +485,95 @@
         row.dataset.drag = it.key;
         kids.push(row);
       });
-      if (items.length > 1) kids.push(h('p', { class: 'hint drag-hint' }, t('dragHint')));
+      if (items.length) kids.push(h('p', { class: 'hint drag-hint' }, t('dragHint')));
       if (!rolls.length && !folders.length) kids.push(h('p', { class: 'empty' }, t('emptyArchive')));
       sheet.body.replaceChildren(...kids);
     };
     sheet.render();
   }
 
+  // Menü einer Rolle: über die drei Punkte und über langes Halten in den Listen
+  async function rollMenu(id, ctx) {
+    ctx = ctx || {};
+    const roll = rollById(id);
+    if (!roll) return;
+    const mine = S.shots.filter(s => s.rollId === id);
+    const a = await ask(roll.title, [
+      { label: t('moreEdit'), value: 'edit' },
+      { label: t('tags'), value: 'tags' },
+      mine.length ? { label: t('scans'), value: 'scans' } : null,
+      mine.some(s => s.lat != null) ? { label: t('map'), value: 'map' } : null,
+      { label: t('moreExport'), value: 'export' },
+      roll.archived ? { label: t('moreFolder'), value: 'folder' } : null,
+      roll.archived ? { label: t('moreReactivate'), value: 'reactivate' } : { label: t('moreArchive'), value: 'archive' },
+      { label: t('moreDelete'), value: 'delete', kind: 'outline' },
+      { label: t('cancel'), value: null, kind: 'ghost' }
+    ].filter(Boolean));
+    if (a === 'edit') { if (ctx.edit) ctx.edit(); else openRoll(id, true); }
+    else if (a === 'tags') openTags(roll, 'rolls');
+    else if (a === 'scans') openScans(id);
+    else if (a === 'map') openMap(roll.title, rollShots(id).reverse(), true);
+    else if (a === 'folder') { if (await moveToFolder(roll)) { refreshAll(); toast(t('saved')); } }
+    else if (a === 'export') openExport(id);
+    else if (a === 'archive' || a === 'reactivate') {
+      if (ctx.flush) ctx.flush();
+      roll.archived = a === 'archive';
+      await DB.put('rolls', roll);
+      if (ctx.close) ctx.close();
+      refreshAll();
+      toast(t(a === 'archive' ? 'archived' : 'reactivated'));
+    } else if (a === 'delete') {
+      const ok = await ask(t('askDeleteRoll', { t: roll.title }), [
+        { label: t('delete'), value: true, kind: 'primary' },
+        { label: t('cancel'), value: null, kind: 'ghost' }
+      ]);
+      if (ok) { await deleteRoll(id); if (ctx.close) ctx.close(); refreshAll(); toast(t('deleted')); }
+    }
+  }
+
+  async function folderMenu(id, close) {
+    const f = folderById(id);
+    if (!f) return;
+    const a = await ask(f.name, [
+      { label: t('rename'), value: 'rename' },
+      { label: t('tags'), value: 'tags' },
+      { label: t('deleteFolder'), value: 'delete', kind: 'outline' },
+      { label: t('cancel'), value: null, kind: 'ghost' }
+    ]);
+    if (a === 'rename') {
+      const n = await askText(t('rename'), f.name, t('folderName'));
+      if (n) { f.name = n; await DB.put('folders', f); refreshAll(); }
+    } else if (a === 'tags') openTags(f, 'folders');
+    else if (a === 'delete') {
+      const ok = await ask(t('askDeleteFolder', { t: f.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+      if (!ok) return;
+      for (const r of S.rolls) if (r.folderId === id) { r.folderId = null; await DB.put('rolls', r); }
+      await DB.del('folders', id);
+      S.folders = S.folders.filter(x => x.id !== id);
+      if (close) close();
+      refreshAll();
+    }
+  }
+
+  // leichtes haptisches Feedback: Vibration auf Android, auf dem iPhone über einen unsichtbaren Schalter
+  function haptic() {
+    try {
+      if (navigator.vibrate) { navigator.vibrate(10); return; }
+      const label = document.createElement('label');
+      label.setAttribute('aria-hidden', 'true');
+      label.style.display = 'none';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.setAttribute('switch', '');
+      label.append(input);
+      document.head.append(label);
+      label.click();
+      label.remove();
+    } catch (e) {}
+  }
+
   // ------------------------------------------------------------ Rollenansicht
-  function openRoll(id) {
+  function openRoll(id, editNow) {
     const roll = rollById(id);
     if (!roll) return;
     const d = pickRoll(roll);
@@ -517,40 +609,7 @@
     const tagLine = h('div', { class: 'tags-block' });
     sheet.body.append(heading, subline, tagLine, form, info, list);
 
-    async function more() {
-      const mine = S.shots.filter(s => s.rollId === id);
-      const a = await ask(roll.title, [
-        { label: t('moreEdit'), value: 'edit' },
-        { label: t('tags'), value: 'tags' },
-        mine.length ? { label: t('scans'), value: 'scans' } : null,
-        mine.some(s => s.lat != null) ? { label: t('map'), value: 'map' } : null,
-        { label: t('moreExport'), value: 'export' },
-        roll.archived ? { label: t('moreFolder'), value: 'folder' } : null,
-        roll.archived ? { label: t('moreReactivate'), value: 'reactivate' } : { label: t('moreArchive'), value: 'archive' },
-        { label: t('moreDelete'), value: 'delete', kind: 'outline' },
-        { label: t('cancel'), value: null, kind: 'ghost' }
-      ].filter(Boolean));
-      if (a === 'edit') startEdit();
-      else if (a === 'tags') openTags(roll, 'rolls');
-      else if (a === 'scans') openScans(id);
-      else if (a === 'map') openMap(roll.title, rollShots(id).reverse(), true);
-      else if (a === 'folder') { if (await moveToFolder(roll)) { refreshAll(); toast(t('saved')); } }
-      else if (a === 'export') openExport(id);
-      else if (a === 'archive' || a === 'reactivate') {
-        if (dirty()) Object.assign(roll, cleanRoll(d, roll.title));
-        roll.archived = a === 'archive';
-        await DB.put('rolls', roll);
-        sheet.close();
-        refreshAll();
-        toast(t(a === 'archive' ? 'archived' : 'reactivated'));
-      } else if (a === 'delete') {
-        const ok = await ask(t('askDeleteRoll', { t: roll.title }), [
-          { label: t('delete'), value: true, kind: 'primary' },
-          { label: t('cancel'), value: null, kind: 'ghost' }
-        ]);
-        if (ok) { await deleteRoll(id); sheet.close(); refreshAll(); toast(t('deleted')); }
-      }
-    }
+    function more() { return rollMenu(id, { edit: startEdit, flush: () => { if (dirty()) Object.assign(roll, cleanRoll(d, roll.title)); }, close: () => sheet.close() }); }
 
     sheet.render = () => {
       if (!rollById(id)) { sheet.close(); return; }
@@ -558,15 +617,16 @@
       sheet.setTitle(h('span', { class: 'num', 'data-count': '' }, pad2(frameCount(id)) + ' / ' + roll.frames));
       heading.textContent = roll.title;
       tagLine.replaceChildren(...[tagChips(roll.tags)].filter(Boolean));
-      subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.', roll.pns ? 'Point-and-Shoot' : ''].filter(Boolean).join(' / ');
+      subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.', roll.pns ? 'P&S' : ''].filter(Boolean).join(' / ');
       const since = activeSince(id);
       info.textContent = since != null ? t('activeSince', { d: fmtDate(since) }) : t('noShotsYet');
       list.replaceChildren(...shots.map(s => shotRow(s)));
       sheet.foot.className = 'sheet-foot center';
       if (roll.archived) sheet.foot.replaceChildren();
-      else if (!sheet.foot.firstChild) sheet.foot.append(h('button', { class: 'shutter', 'aria-label': t('newShot'), 'data-act': 'shutter', onclick: () => openShot(id, null) }));
+      else if (!sheet.foot.firstChild) sheet.foot.append(h('button', { class: 'shutter', 'aria-label': t('newShot'), 'data-act': 'shutter', onclick: () => { haptic(); openShot(id, null); } }));
     };
     sheet.render();
+    if (editNow) startEdit();
   }
 
   async function deleteRoll(id) {
@@ -608,7 +668,7 @@
     const mark = () => items.forEach((it, i) => it.classList.toggle('sel', i === idx));
     list.addEventListener('scroll', () => {
       const i = Math.min(values.length - 1, Math.max(0, Math.round(list.scrollTop / IH)));
-      if (i !== idx) { idx = i; mark(); onChange(values[idx]); }
+      if (i !== idx) { idx = i; mark(); haptic(); onChange(values[idx]); }
     }, { passive: true });
     mark();
     const el = h('div', { class: 'wheel' }, h('div', { class: 'wheel-band' }), list);
@@ -808,9 +868,9 @@
         const sub = predictedSub();
         return h('div', { class: 'step-box' },
           h('div', { class: 'stepper' },
-            h('button', { 'aria-label': '−', 'data-act': 'no-minus', onclick: () => { d.no = Math.max(0, d.no - 1); render(); } }, '−'),
+            h('button', { 'aria-label': '−', 'data-act': 'no-minus', onclick: () => { haptic(); d.no = Math.max(0, d.no - 1); render(); } }, '−'),
             h('div', { class: 'bignum' }, pad2(d.no)),
-            h('button', { 'aria-label': '+', 'data-act': 'no-plus', onclick: () => { d.no++; render(); } }, '+')),
+            h('button', { 'aria-label': '+', 'data-act': 'no-plus', onclick: () => { haptic(); d.no++; render(); } }, '+')),
           sub > 1 ? h('p', { class: 'hint' }, t('noExists', { n: d.no, m: noLabel(d.no, sub) })) : null);
       }
       if (key === 'shutter') return makeWheel(SHUTTERS, v => v, wheelVal.shutter, v => { wheelVal.shutter = v; });
@@ -818,7 +878,7 @@
       if (key === 'focal') return makeWheel(FOCALS, fmtFocal, wheelVal.focal, v => { wheelVal.focal = v; });
       if (key === 'flash') {
         return h('div', { class: 'seg flash-seg' }, [[false, 'flashOff'], [true, 'flashOn']].map(([v, k]) =>
-          h('button', { class: wheelVal.flash === v ? 'on' : '', 'data-flash': String(v), onclick: () => { wheelVal.flash = v; render(); } }, v ? icon('bolt') : null, t(k))));
+          h('button', { class: wheelVal.flash === v ? 'on' : '', 'data-flash': String(v), onclick: () => { haptic(); wheelVal.flash = v; render(); } }, v ? icon('bolt') : null, t(k))));
       }
       if (key === 'loc') {
         const busy = geo.state === 'busy';
@@ -827,7 +887,7 @@
           h('div', { class: 'big-value' + (has ? '' : ' dim'), 'data-loc': '' }, busy ? t('locBusy') : has ? fmtCoord(d.lat, d.lon) : t(geo.state === 'fail' ? 'locFail' : 'locNone')),
           has && d.acc != null ? h('p', { class: 'hint' }, '± ' + Math.round(d.acc) + ' m') : null,
           !busy && !has && geo.state === 'fail' && geo.why === 'denied' ? h('p', { class: 'hint', 'data-loc-denied': '' }, t('locDenied')) : null,
-          h('button', { class: 'btn', disabled: busy, onclick: locate }, icon('pin'), t('locRetry')),
+          h('button', { class: 'btn', disabled: busy, onclick: () => { haptic(); locate(); } }, icon('pin'), t('locRetry')),
           h('button', {
             class: 'btn', 'data-act': 'pick-map', onclick: () => openPicker(d.lat != null ? { lat: d.lat, lon: d.lon, z: 16 } : lastPlace(rollId), c => {
               geo.token++; geo.state = 'ok';
@@ -871,7 +931,7 @@
         row('shutter', d.shutter == null ? null : fmtShutterUnit(d.shutter)),
         row('aperture', d.aperture == null ? null : fmtAperture(d.aperture)),
         row('focal', d.focal == null ? null : fmtFocal(d.focal)),
-        row('flash', d.flash == null ? null : cap(t(d.flash ? 'yes' : 'no')), 'text'),
+        row('flash', d.flash == null ? null : cap(t(d.flash ? 'yes' : 'no'))),
         row('loc', geo.state === 'busy' ? t('locBusy') : d.lat != null ? fmtCoord(d.lat, d.lon) : null, geo.state === 'busy' ? 'text' : ''),
         row('date', d.date == null ? null : fmtDateTime(d.date)),
         row('notes', noteVal, 'text'),
@@ -907,7 +967,7 @@
       sheet.foot.className = 'sheet-foot three';
       const back = h('button', { class: 'btn ghost' + (step === 0 && !jumped ? ' invisible' : ''), 'data-act': 'back', onclick: () => leave(key, step - 1) }, t('back'));
       if (key === 'done') {
-        sheet.foot.replaceChildren(back, h('span'), h('button', { class: 'btn primary', 'data-act': 'finish', onclick: finish }, t('finish')));
+        sheet.foot.replaceChildren(back, h('span'), h('button', { class: 'btn primary', 'data-act': 'finish', onclick: () => { haptic(); finish(); } }, t('finish')));
       } else {
         sheet.foot.replaceChildren(back,
           h('button', { class: 'btn ghost' + (key === 'no' ? ' invisible' : ''), 'data-act': 'skip', onclick: () => { clear(key); leave(key, step + 1); } }, t(jumped ? 'clear' : 'skip')),
@@ -1057,32 +1117,11 @@
   function openFolder(id) {
     const sheet = openSheet({});
     sheet.setRight(h('button', {
-      class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: async () => {
-        const f = folderById(id);
-        const a = await ask(f.name, [
-          { label: t('rename'), value: 'rename' },
-          { label: t('tags'), value: 'tags' },
-          { label: t('deleteFolder'), value: 'delete', kind: 'outline' },
-          { label: t('cancel'), value: null, kind: 'ghost' }
-        ]);
-        if (a === 'rename') {
-          const n = await askText(t('rename'), f.name, t('folderName'));
-          if (n) { f.name = n; await DB.put('folders', f); refreshAll(); }
-        } else if (a === 'tags') openTags(f, 'folders');
-        else if (a === 'delete') {
-          const ok = await ask(t('askDeleteFolder', { t: f.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
-          if (!ok) return;
-          for (const r of S.rolls) if (r.folderId === id) { r.folderId = null; await DB.put('rolls', r); }
-          await DB.del('folders', id);
-          S.folders = S.folders.filter(x => x.id !== id);
-          sheet.close();
-          refreshAll();
-        }
-      }
+      class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: () => folderMenu(id, () => sheet.close())
     }, icon('more')));
-    sortable(sheet.body, async (from, to, mode) => {
-      await reorder(byOrder(archivedRolls().filter(r => r.folderId === id)).map(o => ({ obj: o, folder: false, key: 'r:' + o.id })), from, to, mode === 'into' ? 'before' : mode);
-      refreshAll();
+    sortable(sheet.body, {
+      onMove: async (key, index) => { await reorderTo(byOrder(archivedRolls().filter(r => r.folderId === id)).map(o => ({ obj: o, folder: false, key: 'r:' + o.id })), key, index); refreshAll(); },
+      onHold: keyMenu
     });
     sheet.render = () => {
       const f = folderById(id);
@@ -1538,71 +1577,86 @@
     const loose = archivedRolls().filter(r => !r.folderId || !folderById(r.folderId));
     return byOrder(folders.concat(loose)).map(o => { const folder = S.folders.includes(o); return { obj: o, folder, key: (folder ? 'f:' : 'r:') + o.id }; });
   }
-  async function reorder(items, from, to, mode) {
+  async function reorderTo(items, from, index) {
     const a = items.slice(), i = a.findIndex(x => x.key === from);
     if (i < 0) return;
-    const m = a.splice(i, 1)[0];
-    let j = a.findIndex(x => x.key === to);
-    if (j < 0) return;
-    if (mode === 'after') j++;
-    a.splice(j, 0, m);
+    a.splice(Math.max(0, Math.min(a.length - 1, index)), 0, a.splice(i, 1)[0]);
     for (let k = 0; k < a.length; k++) if (a[k].obj.order !== k) { a[k].obj.order = k; await DB.put(a[k].folder ? 'folders' : 'rolls', a[k].obj); }
   }
-  async function dropInArchive(from, to, mode) {
-    if (mode === 'into') {
-      const r = rollById(from.slice(2));
-      if (!r) return;
-      r.folderId = to.slice(2); r.order = null;
-      await DB.put('rolls', r);
-      toast(t('saved'));
-    } else await reorder(archiveItems(), from, to, mode);
-    refreshAll();
-  }
+  const activeItems = () => byOrder(S.rolls.filter(r => !r.archived).sort((a, b) => b.createdAt - a.createdAt)).map(o => ({ obj: o, folder: false, key: 'r:' + o.id }));
+  const keyMenu = key => (key[0] === 'f' ? folderMenu(key.slice(2)) : rollMenu(key.slice(2)));
 
-  // Zeilen mit data-drag lassen sich nach langem Halten ziehen. onDrop(von, nach, 'before' | 'after' | 'into')
-  function sortable(box, onDrop) {
+  /* Kacheln mit data-drag: langes Halten hebt eine Kachel an. Loslassen ohne Bewegung öffnet ihr Menü,
+     Ziehen sortiert sie; die anderen Kacheln rücken dabei zur Seite. cb: {onMove(key, index), onInto(key, folderKey), onHold(key)} */
+  function sortable(box, cb) {
     let st = null;
-    const clear = () => box.querySelectorAll('.drop-before,.drop-after,.drop-into').forEach(e => e.classList.remove('drop-before', 'drop-after', 'drop-into'));
+    const reset = () => box.querySelectorAll('[data-drag]').forEach(e => { e.style.transform = ''; e.style.transition = ''; e.classList.remove('dragging', 'drop-into', 'over-folder'); });
     const end = commit => {
       if (!st) return;
       const s = st;
       st = null;
       clearTimeout(s.timer);
       if (!s.active) return;
-      s.el.classList.remove('dragging');
-      s.el.style.transform = '';
       s.el._noClickUntil = Date.now() + 450;
-      clear();
-      if (commit && s.target) onDrop(s.el.dataset.drag, s.target.el.dataset.drag, s.target.mode);
+      if (!commit) { reset(); return; }
+      if (!s.moved) { reset(); if (cb.onHold) cb.onHold(s.el.dataset.drag); return; }
+      if (s.into) { reset(); if (cb.onInto) cb.onInto(s.el.dataset.drag, s.into.dataset.drag); return; }
+      if (s.index === s.i0) { reset(); return; }
+      // in die Lücke einrasten, dann speichern
+      s.el.style.transition = 'transform .15s';
+      s.el.style.transform = 'translateY(' + s.slot + 'px)';
+      setTimeout(() => { reset(); cb.onMove(s.el.dataset.drag, s.index); }, 160);
     };
     box.addEventListener('pointerdown', e => {
       const el = e.target.closest('[data-drag]');
       if (!el || !box.contains(el) || st) return;
-      const s = { el, x: e.clientX, y: e.clientY, id: e.pointerId, active: false, target: null };
+      const s = { el, y: e.clientY, x: e.clientX, id: e.pointerId, active: false, moved: false, into: null };
       s.timer = setTimeout(() => {
         if (st !== s) return;
+        s.list = [...box.querySelectorAll('[data-drag]')];
+        s.rects = s.list.map(t => { const r = t.getBoundingClientRect(); return { top: r.top, h: r.height }; });
+        s.i0 = s.index = s.list.indexOf(el);
+        s.gap = s.rects.length > 1 ? Math.max(0, s.rects[1].top - s.rects[0].top - s.rects[0].h) : 10;
+        s.scroll0 = box.scrollTop;
+        s.slot = 0;
         s.active = true;
         el.classList.add('dragging');
+        haptic();
         try { box.setPointerCapture(s.id); } catch (err) {}
-      }, 450);
+      }, 420);
       st = s;
     });
     box.addEventListener('pointermove', e => {
       if (!st || e.pointerId !== st.id) return;
-      const dx = e.clientX - st.x, dy = e.clientY - st.y;
-      if (!st.active) { if (Math.hypot(dx, dy) > 8) end(false); return; }
-      st.el.style.transform = 'translateY(' + dy + 'px)';
-      const under = document.elementFromPoint(e.clientX, e.clientY);
-      const tEl = under && under.closest('[data-drag]');
-      clear();
-      st.target = null;
-      if (tEl && tEl !== st.el && box.contains(tEl)) {
-        const r = tEl.getBoundingClientRect(), rel = (e.clientY - r.top) / r.height;
-        const into = tEl.dataset.drag[0] === 'f' && st.el.dataset.drag[0] === 'r' && rel > 0.25 && rel < 0.75;
-        const mode = into ? 'into' : rel < 0.5 ? 'before' : 'after';
-        tEl.classList.add('drop-' + mode);
-        st.target = { el: tEl, mode };
-      }
+      const s = st;
+      if (!s.active) { if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > 8) end(false); return; }
+      const dy = e.clientY - s.y + (box.scrollTop - s.scroll0);
+      if (Math.abs(dy) > 6) s.moved = true;
+      s.el.style.transform = 'translateY(' + dy + 'px)';
+      const me = s.rects[s.i0], center = me.top + me.h / 2 + dy, step = me.h + s.gap;
+      let into = null, index = 0;
+      s.list.forEach((t, k) => {
+        if (k === s.i0) return;
+        const r = s.rects[k];
+        if (cb.onInto && t.dataset.drag[0] === 'f' && s.el.dataset.drag[0] === 'r' && center > r.top + r.h * 0.25 && center < r.top + r.h * 0.75) into = t;
+        if (r.top + r.h / 2 < center) index++;
+      });
+      if (s.into && s.into !== into) s.into.classList.remove('drop-into');
+      if (into) into.classList.add('drop-into');
+      s.el.classList.toggle('over-folder', !!into);
+      s.into = into;
+      if (into) index = s.index;
+      s.index = index;
+      let slot = 0;
+      s.list.forEach((t, k) => {
+        if (k === s.i0) return;
+        const pos = k < s.i0 ? k : k - 1;
+        let shift = 0;
+        if (k < s.i0 && pos >= index) { shift = step; slot -= s.rects[k].h + s.gap; }
+        else if (k > s.i0 && pos < index) { shift = -step; slot += s.rects[k].h + s.gap; }
+        t.style.transform = shift ? 'translateY(' + shift + 'px)' : '';
+      });
+      s.slot = slot;
       const b = box.getBoundingClientRect();
       if (e.clientY < b.top + 50) box.scrollTop -= 8; else if (e.clientY > b.bottom - 50) box.scrollTop += 8;
     });
@@ -1864,12 +1918,16 @@
           .concat((S.settings.layouts || []).map(l => h('button', { class: 'theme' + (layoutActive(l) ? ' on' : ''), 'data-layout': l.name, onclick: () => { S.settings.custom = Object.assign({}, l.colors); S.settings.theme = 'custom'; saveSettings(); } },
             h('span', null, l.name),
             h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + l.colors[k] }))))))
-          .concat(h('button', { class: 'theme' + (S.settings.theme === 'custom' && !(S.settings.layouts || []).some(layoutActive) ? ' on' : ''), 'data-theme-pick': 'custom', onclick: () => { if (!S.settings.custom) S.settings.custom = Object.assign({}, CUSTOM_DEFAULT); S.settings.theme = 'custom'; saveSettings(); } },
+          .concat(h('button', { class: 'theme' + (S.settings.theme === 'custom' && !(S.settings.layouts || []).some(layoutActive) ? ' on' : ''), 'data-theme-pick': 'custom', onclick: () => { openCustom(); S.settings.theme = 'custom'; saveSettings(); } },
             h('span', null, t('th_custom')),
             h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + customColors()[k] })))))),
-        h('button', { class: 'btn below-s', 'data-act': 'custom-edit', onclick: openCustom }, t('customEdit')),
         h('p', { class: 'section-label' }, t('setLang')),
-        h('div', { class: 'pills' }, [['de', 'Deutsch'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português']].map(([k, name]) => h('button', { class: 'pill' + (S.settings.lang === k ? ' on' : ''), 'data-lang': k, onclick: () => { S.settings.lang = k; saveSettings(); } }, name))),
+        h('label', { class: 'field' }, (() => {
+          const sel = h('select', { 'data-field': 'lang', 'aria-label': t('setLang'), onchange: e => { S.settings.lang = e.target.value; saveSettings(); } },
+            [['de', 'Deutsch'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português']].map(([k, name]) => h('option', { value: k }, name)));
+          sel.value = S.settings.lang;
+          return sel;
+        })()),
         h('p', { class: 'section-label' }, t('setBackup')),
         h('p', { class: 'note' }, t('backupHint')),
         h('div', { class: 'btn-stack' },

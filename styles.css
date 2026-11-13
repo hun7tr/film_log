@@ -21,7 +21,7 @@
   --bg: #000000; --sheet: #17002A; --card: #2A0048; --line: #560072;
   --text: #F7EEF9; --muted: #BE9CCB;
   --accent: #D50048; --on-accent: #FFFFFF;
-  --second: #800080; --on-second: #FFFFFF; --third: #A90072;
+  --second: #800080; --on-second: #FFFFFF; --third: #800080;
   --shade: rgba(0, 0, 0, .66);
 }
 /* Nebel (hell) */
@@ -367,12 +367,18 @@ input.date-input {
 .swatch.on { box-shadow: 0 0 0 2px var(--sheet), 0 0 0 4.5px var(--text); }
 
 /* ---------- Verschieben, Kartenwahl ---------- */
-[data-drag] { -webkit-touch-callout: none; touch-action: pan-y; }
-.row.dragging { opacity: 1 !important; position: relative; z-index: 5; pointer-events: none; background: var(--card); border-radius: var(--r-m); border-top-color: transparent; box-shadow: 0 10px 26px rgba(0, 0, 0, .28); padding-left: 12px; padding-right: 12px; margin: 0 -12px; width: calc(100% + 24px); }
-.row.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
-.row.drop-after { box-shadow: inset 0 -3px 0 var(--accent); }
-.row.drop-into { background: var(--card); border-radius: var(--r-m); box-shadow: inset 0 0 0 2.5px var(--accent); }
-.drag-hint { margin-top: 18px; }
+/* Rollen und Ordner als Kacheln, die sich nach langem Halten verschieben lassen */
+.row[data-drag] {
+  -webkit-touch-callout: none; touch-action: pan-y;
+  background: var(--card); border-radius: 16px; border-top: 0; padding: 14px 16px; margin-bottom: 10px;
+  transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s, scale .2s;
+}
+.row[data-drag]:active { opacity: 1; scale: .985; }
+.row[data-drag].dragging { position: relative; z-index: 5; pointer-events: none; transition: box-shadow .2s, scale .2s; scale: 1.03; box-shadow: 0 14px 30px rgba(0, 0, 0, .3); }
+.row[data-drag].dragging.over-folder { scale: .86; opacity: .8 !important; }
+.row[data-drag].drop-into { box-shadow: inset 0 0 0 2.5px var(--accent); scale: 1.02; }
+.seg.tools { margin-bottom: 12px; }
+.drag-hint { margin-top: 14px; }
 .sheet-title .num { font-size: 22px; font-weight: 700; }
 .map-cross { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -30px 0 0 -15px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--accent); box-shadow: 0 0 0 2.5px #fff, 0 3px 8px rgba(0, 0, 0, .45); pointer-events: none; }
 .map-cross::after { content: ""; position: absolute; left: 10px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: #fff; }

@@ -6,6 +6,20 @@
 */
 window.CHANGELOG = [
   {
+    v: '0.8', date: '2026-11-13',
+    title: { de: 'Kacheln zum Verschieben, Menü per Halten, haptisches Feedback', en: 'Movable tiles, menu on hold, haptic feedback' },
+    de: {
+      added: ['Rollen lassen sich auch unter „Aktiv“ durch Halten und Ziehen sortieren', 'Langes Halten auf eine Rolle oder einen Ordner öffnet dasselbe Menü wie die drei Punkte', 'Leichtes haptisches Feedback beim Anlegen einer Rolle, am Auslöser, bei „Abschließen“, an den Wahlrädern, bei Nummer, Blitz und Standort sowie beim Anheben einer Kachel'],
+      changed: ['Rollen und Ordner sind Kacheln mit runden Ecken; beim Ziehen rücken die anderen zur Seite und die Kachel rastet ein', 'Point-and-Shoot wird in den Listen als P&S abgekürzt', '„Eigene Farben“ öffnet direkt den Farbeditor', 'Sprache als Auswahlmenü', 'Blitz Ja/Nein in der Shot-Übersicht fett'],
+      removed: ['Knopf „Eigene Farben anpassen“', 'Zwei Farben aus dem Theme Nacht']
+    },
+    en: {
+      added: ['Rolls under “Active” can be reordered by holding and dragging too', 'Press and hold on a roll or folder opens the same menu as the three dots', 'Light haptic feedback when creating a roll, on the shutter button, on “Finish”, on the wheels, on number, flash and location, and when lifting a tile'],
+      changed: ['Rolls and folders are tiles with rounded corners; while dragging the others move aside and the tile snaps into place', 'Point-and-Shoot is abbreviated to P&S in the lists', '“Custom colours” opens the colour editor directly', 'Language as a dropdown', 'Flash yes/no in the shot summary in bold'],
+      removed: ['“Adjust custom colours” button', 'Two colours from the Night theme']
+    }
+  },
+  {
     v: '0.7', date: '2026-11-13',
     title: { de: 'Changelog in den Einstellungen', en: 'Changelog in settings' },
     de: { added: ['Changelog in den Einstellungen: alle Versionen mit kurzer Zusammenfassung, Details per Tipp'], changed: ['Die Version im Hauptmenü heißt jetzt wie im Changelog, zum Beispiel „Alpha 0.7“'] },
