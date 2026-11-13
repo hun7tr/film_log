@@ -69,6 +69,7 @@ window.I18N = {
     th_custom: 'Eigene Farben', customEdit: 'Eigene Farben anpassen', el_bg: 'Hintergrund', el_card: 'Flächen', el_text: 'Text', el_accent: 'Akzent', el_second: 'Zähler',
     pickOnMap: 'Auf der Karte wählen', useLocation: 'Diesen Standort übernehmen', saveLayout: 'Als Layout speichern', layoutName: 'Name des Layouts', savedLayouts: 'Gespeicherte Layouts',
     askDeleteLayout: 'Layout „{t}“ löschen?', dragHint: 'Gedrückt halten, um zu sortieren oder eine Rolle in einen Ordner zu ziehen.',
+    about: 'Über die App', changelog: 'Changelog', changelogSub: 'Was sich mit jeder Version geändert hat', clNew: 'Neu', clChanged: 'Geändert', clRemoved: 'Entfernt',
     dbError: 'Der Speicher ist nicht verfügbar. Deine Daten können nicht gesichert werden.',
     saveFail: 'Speichern fehlgeschlagen.'
   },
@@ -141,6 +142,7 @@ window.I18N = {
     th_custom: 'Custom colours', customEdit: 'Adjust custom colours', el_bg: 'Background', el_card: 'Surfaces', el_text: 'Text', el_accent: 'Accent', el_second: 'Counter',
     pickOnMap: 'Choose on the map', useLocation: 'Use this location', saveLayout: 'Save as layout', layoutName: 'Layout name', savedLayouts: 'Saved layouts',
     askDeleteLayout: 'Delete layout “{t}”?', dragHint: 'Press and hold to reorder or to drag a roll into a folder.',
+    about: 'About the app', changelog: 'Changelog', changelogSub: 'What changed with each version', clNew: 'New', clChanged: 'Changed', clRemoved: 'Removed',
     dbError: 'Storage is unavailable. Your data cannot be saved.',
     saveFail: 'Saving failed.'
   }
@@ -217,6 +219,7 @@ Object.assign(window.I18N, {
     th_custom: 'Couleurs personnalisées', customEdit: 'Ajuster mes couleurs', el_bg: 'Fond', el_card: 'Surfaces', el_text: 'Texte', el_accent: 'Accent', el_second: 'Compteur',
     pickOnMap: 'Choisir sur la carte', useLocation: 'Utiliser ce lieu', saveLayout: 'Enregistrer comme palette', layoutName: 'Nom de la palette', savedLayouts: 'Palettes enregistrées',
     askDeleteLayout: 'Supprimer la palette « {t} » ?', dragHint: 'Maintiens appuyé pour réorganiser ou glisser une pellicule dans un dossier.',
+    about: 'À propos', changelog: 'Changelog', changelogSub: 'Ce qui a changé à chaque version', clNew: 'Nouveau', clChanged: 'Modifié', clRemoved: 'Supprimé',
     dbError: 'Le stockage est indisponible. Tes données ne peuvent pas être enregistrées.',
     saveFail: 'Échec de l’enregistrement.'
   },
@@ -289,6 +292,7 @@ Object.assign(window.I18N, {
     th_custom: 'Colores propios', customEdit: 'Ajustar mis colores', el_bg: 'Fondo', el_card: 'Superficies', el_text: 'Texto', el_accent: 'Acento', el_second: 'Contador',
     pickOnMap: 'Elegir en el mapa', useLocation: 'Usar esta ubicación', saveLayout: 'Guardar como paleta', layoutName: 'Nombre de la paleta', savedLayouts: 'Paletas guardadas',
     askDeleteLayout: '¿Eliminar la paleta «{t}»?', dragHint: 'Mantén pulsado para reordenar o arrastrar un carrete a una carpeta.',
+    about: 'Acerca de la app', changelog: 'Changelog', changelogSub: 'Qué cambió en cada versión', clNew: 'Nuevo', clChanged: 'Cambiado', clRemoved: 'Eliminado',
     dbError: 'El almacenamiento no está disponible. Tus datos no se pueden guardar.',
     saveFail: 'No se pudo guardar.'
   },
@@ -361,6 +365,7 @@ Object.assign(window.I18N, {
     th_custom: 'Cores próprias', customEdit: 'Ajustar minhas cores', el_bg: 'Fundo', el_card: 'Superfícies', el_text: 'Texto', el_accent: 'Destaque', el_second: 'Contador',
     pickOnMap: 'Escolher no mapa', useLocation: 'Usar este local', saveLayout: 'Salvar como paleta', layoutName: 'Nome da paleta', savedLayouts: 'Paletas salvas',
     askDeleteLayout: 'Excluir a paleta “{t}”?', dragHint: 'Mantenha pressionado para reordenar ou arrastar um rolo para uma pasta.',
+    about: 'Sobre o app', changelog: 'Changelog', changelogSub: 'O que mudou em cada versão', clNew: 'Novo', clChanged: 'Alterado', clRemoved: 'Removido',
     dbError: 'O armazenamento está indisponível. Seus dados não podem ser salvos.',
     saveFail: 'Falha ao salvar.'
   }

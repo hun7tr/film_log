@@ -7,7 +7,7 @@
     nacht: { bar: '#000000', colors: ['#000000', '#2A0048', '#560072', '#800080', '#A90072', '#D50048', '#FF0000'], pdf: [213, 0, 72] },
     nebel: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] }
   };
-  const VERSION = '0.6';
+  const VERSION = '0.7';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
@@ -283,7 +283,7 @@
     home.replaceChildren(
       h('div', null,
         h('h1', { class: 'brand' }, 'Film_Log'),
-        h('p', { class: 'brand-version' }, 'Version ' + VERSION),
+        h('p', { class: 'brand-version' }, 'Alpha ' + VERSION),
         h('p', { class: 'brand-sub' }, S.rolls.length ? t('homeStats')(S.rolls.length, S.shots.length) : t('homeEmpty'))),
       h('div', null,
         h('nav', { class: 'menu' },
@@ -1881,7 +1881,31 @@
             }
           }, t('backupSave')),
           h('button', { class: 'btn', 'data-act': 'backup-restore', onclick: () => fileIn.click() }, t('backupRestore'))),
+        h('p', { class: 'section-label' }, t('about')),
+        h('button', { class: 'row', 'data-act': 'changelog', onclick: openChangelog },
+          h('span', { class: 'row-title' }, t('changelog')), h('span', { class: 'row-side' }, 'Alpha ' + VERSION), h('span', { class: 'row-sub' }, t('changelogSub'))),
         fileIn);
+    };
+    sheet.render();
+  }
+
+  // ------------------------------------------------------------ Changelog
+  function openChangelog() {
+    const sheet = openSheet({ title: t('changelog') });
+    const open = new Set();
+    sheet.render = () => {
+      sheet.setTitle(t('changelog'));
+      const lang = S.settings.lang === 'de' ? 'de' : 'en';
+      sheet.body.replaceChildren(...(window.CHANGELOG || []).map(e => {
+        const d = e[lang] || e.en || {};
+        const group = (key, list) => (list && list.length ? [h('p', { class: 'cl-group' }, t(key)), h('ul', { class: 'cl-list' }, list.map(x => h('li', null, x)))] : []);
+        return h('div', { class: 'cl-entry' + (open.has(e.v) ? ' open' : '') },
+          h('button', { class: 'cl-head', 'data-version': e.v, 'aria-expanded': open.has(e.v) ? 'true' : 'false', onclick: () => { if (open.has(e.v)) open.delete(e.v); else open.add(e.v); sheet.render(); } },
+            h('span', { class: 'cl-version' }, 'Alpha ' + e.v),
+            h('span', { class: 'cl-title' }, e.title[lang] || e.title.en),
+            h('span', { class: 'cl-date' }, fmtDate(new Date(e.date + 'T12:00:00').getTime()))),
+          open.has(e.v) ? h('div', { class: 'cl-body' }, group('clNew', d.added), group('clChanged', d.changed), group('clRemoved', d.removed)) : null);
+      }));
     };
     sheet.render();
   }

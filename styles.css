@@ -378,6 +378,20 @@ input.date-input {
 .map-cross::after { content: ""; position: absolute; left: 10px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: #fff; }
 .tag-toggle .swatches { margin-right: 6px; }
 
+/* ---------- Changelog ---------- */
+.cl-entry { border-top: 1px solid var(--line); }
+.cl-entry:first-child { border-top: 0; }
+.cl-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; padding: 13px 0; }
+.cl-head:active { opacity: .55; }
+.cl-version { font: 700 17px var(--f-num); font-variant-numeric: tabular-nums; }
+.cl-date { grid-row: 1; grid-column: 2; font-size: 13px; color: var(--muted); }
+.cl-title { grid-column: 1 / -1; font-size: 14px; line-height: 1.35; color: var(--muted); }
+.cl-entry.open .cl-title { color: var(--text); }
+.cl-body { padding: 0 0 14px; font-size: 14px; line-height: 1.4; }
+.cl-group { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cl-list { margin: 4px 0 0; padding-left: 18px; }
+.cl-list li { margin: 3px 0; }
+
 /* ---------- Meldung ---------- */
 #toast {
   position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 118px); z-index: 60;
