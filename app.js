@@ -4,8 +4,8 @@
   // ------------------------------------------------------------ Konstanten
   const THEMES = {
     salbei: { bar: '#EEEDE9', colors: ['#EEEDE9', '#C8C6AD', '#98503F', '#A2B08F', '#D9B2A9'], pdf: [152, 80, 63] },
-    wald: { bar: '#CBDBA7', colors: ['#CBDBA7', '#789342', '#294E21', '#76C1C3', '#548D95'], pdf: [84, 141, 149] },
-    sepia: { bar: '#0D0D0D', colors: ['#0D0D0D', '#40352C', '#A69B92', '#D9D0C7', '#F2EEEB'], pdf: [64, 53, 44] }
+    nacht: { bar: '#000000', colors: ['#000000', '#2A0048', '#560072', '#800080', '#A90072', '#D50048', '#FF0000'], pdf: [213, 0, 72] },
+    nebel: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] }
   };
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
@@ -69,7 +69,8 @@
 
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
   const pad2 = n => String(n).padStart(2, '0');
-  const locale = () => (S.settings.lang === 'de' ? 'de-DE' : 'en-GB');
+  const LOCALES = { de: 'de-DE', en: 'en-GB', fr: 'fr-FR', es: 'es-ES', pt: 'pt-BR' };
+  const locale = () => LOCALES[S.settings.lang] || 'en-GB';
   const fmtDate = ms => ms == null ? '' : new Intl.DateTimeFormat(locale(), { dateStyle: 'medium' }).format(new Date(ms));
   const fmtDateTime = ms => ms == null ? '' : new Intl.DateTimeFormat(locale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ms));
   const fmtShutter = v => v == null ? '' : v === 'B' ? 'B' : /s$/.test(v) ? v.slice(0, -1) + ' s' : v;
@@ -1342,9 +1343,9 @@
   }
 
   function buildCsv(roll) {
-    const de = S.settings.lang === 'de';
+    const lang = S.settings.lang, de = lang !== 'en', sep = lang === 'de' ? '.' : '/';
     const num = v => (de ? String(v).replace('.', ',') : String(v));
-    const date = ms => { const d = new Date(ms); return de ? pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear() : d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
+    const date = ms => { const d = new Date(ms); return de ? pad2(d.getDate()) + sep + pad2(d.getMonth() + 1) + sep + d.getFullYear() : d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
     const time = ms => { const d = new Date(ms); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
     const meta = [[t('fTitle'), roll.title]].concat(rollMeta(roll).map(m => [m.label, m.value === '–' ? '' : m.value]), [[t('fNote'), roll.note || '']]);
     const header = [t('cShot'), t('cShutter'), t('cAperture'), t('cFocal'), t('cLat'), t('cLon'), t('cDate'), t('cTime'), t('cNotes'), t('cRef')];
@@ -1527,7 +1528,7 @@
           h('span', null, t('th_' + k)),
           h('span', { class: 'swatches' }, THEMES[k].colors.map(c => h('i', { style: 'background:' + c })))))),
         h('p', { class: 'section-label' }, t('setLang')),
-        h('div', { class: 'seg' }, [['de', 'Deutsch'], ['en', 'English']].map(([k, name]) => h('button', { class: S.settings.lang === k ? 'on' : '', 'data-lang': k, onclick: () => { S.settings.lang = k; saveSettings(); } }, name))),
+        h('div', { class: 'pills' }, [['de', 'Deutsch'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português']].map(([k, name]) => h('button', { class: 'pill' + (S.settings.lang === k ? ' on' : ''), 'data-lang': k, onclick: () => { S.settings.lang = k; saveSettings(); } }, name))),
         h('p', { class: 'section-label' }, t('setBackup')),
         h('p', { class: 'note' }, t('backupHint')),
         h('div', { class: 'btn-stack' },
@@ -1546,7 +1547,7 @@
 
   // ------------------------------------------------------------ Start
   async function init() {
-    try { if (!localStorage.getItem('filmlog.settings') && !/^de/i.test(navigator.language || 'de')) S.settings.lang = 'en'; } catch (e) {}
+    try { if (!localStorage.getItem('filmlog.settings')) { const l = (navigator.language || 'de').slice(0, 2).toLowerCase(); S.settings.lang = window.I18N[l] ? l : 'en'; } } catch (e) {}
     loadSettings();
     applySettings();
     renderHome();

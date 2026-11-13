@@ -16,21 +16,21 @@
   --second: #A2B08F; --on-second: #20261A; --third: #D9B2A9;
   --shade: rgba(43, 38, 34, .42);
 }
-/* Wald (hell) */
-[data-theme="wald"] {
-  --bg: #CBDBA7; --sheet: #CBDBA7; --card: #DCE8C4; --line: #A9BF7C;
-  --text: #294E21; --muted: #48693A;
-  --accent: #548D95; --on-accent: #F6FAEC;
-  --second: #76C1C3; --on-second: #173A2A; --third: #789342;
-  --shade: rgba(41, 78, 33, .45);
+/* Nacht (dunkel) */
+[data-theme="nacht"] {
+  --bg: #000000; --sheet: #17002A; --card: #2A0048; --line: #560072;
+  --text: #F7EEF9; --muted: #BE9CCB;
+  --accent: #D50048; --on-accent: #FFFFFF;
+  --second: #800080; --on-second: #FFFFFF; --third: #A90072;
+  --shade: rgba(0, 0, 0, .66);
 }
-/* Sepia (dunkel) */
-[data-theme="sepia"] {
-  --bg: #0D0D0D; --sheet: #1C1815; --card: #40352C; --line: #40352C;
-  --text: #F2EEEB; --muted: #A69B92;
-  --accent: #D9D0C7; --on-accent: #0D0D0D;
-  --second: #40352C; --on-second: #F2EEEB; --third: #A69B92;
-  --shade: rgba(0, 0, 0, .6);
+/* Nebel (hell) */
+[data-theme="nebel"] {
+  --bg: #F0EEE9; --sheet: #F0EEE9; --card: #E0E2E0; --line: #B7B8B4;
+  --text: #262524; --muted: #6B6966;
+  --accent: #5AA0DE; --on-accent: #0D2136;
+  --second: #B7B8B4; --on-second: #262524; --third: #898784;
+  --shade: rgba(38, 37, 36, .42);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
