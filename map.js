@@ -28,6 +28,7 @@
     credit.target = '_blank'; credit.rel = 'noopener';
     credit.textContent = '© OpenStreetMap';
     box.replaceChildren(tiles, svg, marks, zoomBox, credit);
+    if (opts.picker) box.append(el('div', 'map-cross'));
 
     let z = 14, cx = 0, cy = 0, selected = null;
     const cache = new Map();
@@ -47,6 +48,13 @@
 
     function fit() {
       const w = box.clientWidth || 320, h = box.clientHeight || 400;
+      if (!points.length) {
+        const c = opts.center || { lat: 51.16, lon: 10.45, z: 5 };
+        z = c.z || 14;
+        const q = proj(c.lat, c.lon, z);
+        cx = q[0]; cy = q[1];
+        return;
+      }
       for (z = 17; z > ZMIN; z--) {
         const ps = points.map(p => proj(p.lat, p.lon, z));
         const xs = ps.map(p => p[0]), ys = ps.map(p => p[1]);
@@ -126,7 +134,12 @@
     fit();
     draw();
     if (root.ResizeObserver) new ResizeObserver(draw).observe(box);
-    return { select, zoom };
+    // Mitte der Karte als Koordinaten, für die Standortwahl
+    const center = () => {
+      const n = T * Math.pow(2, z);
+      return { lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * cy / n))) * 180 / Math.PI, lon: ((cx / n * 360 - 180 + 540) % 360) - 180 };
+    };
+    return { select, zoom, center };
   }
 
   root.FilmMap = { create };

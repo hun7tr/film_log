@@ -67,6 +67,8 @@ window.I18N = {
     importFail: 'Die Datei konnte nicht gelesen werden.', importNone: 'Die Datei enthält keine Tabellenzeilen.',
     imRoll: 'Rolle (Titel)', imLoc: 'Koordinaten (eine Spalte)',
     th_custom: 'Eigene Farben', customEdit: 'Eigene Farben anpassen', el_bg: 'Hintergrund', el_card: 'Flächen', el_text: 'Text', el_accent: 'Akzent', el_second: 'Zähler',
+    pickOnMap: 'Auf der Karte wählen', useLocation: 'Diesen Standort übernehmen', saveLayout: 'Als Layout speichern', layoutName: 'Name des Layouts', savedLayouts: 'Gespeicherte Layouts',
+    askDeleteLayout: 'Layout „{t}“ löschen?', dragHint: 'Gedrückt halten, um zu sortieren oder eine Rolle in einen Ordner zu ziehen.',
     dbError: 'Der Speicher ist nicht verfügbar. Deine Daten können nicht gesichert werden.',
     saveFail: 'Speichern fehlgeschlagen.'
   },
@@ -137,6 +139,8 @@ window.I18N = {
     importFail: 'The file could not be read.', importNone: 'The file contains no table rows.',
     imRoll: 'Roll (title)', imLoc: 'Coordinates (one column)',
     th_custom: 'Custom colours', customEdit: 'Adjust custom colours', el_bg: 'Background', el_card: 'Surfaces', el_text: 'Text', el_accent: 'Accent', el_second: 'Counter',
+    pickOnMap: 'Choose on the map', useLocation: 'Use this location', saveLayout: 'Save as layout', layoutName: 'Layout name', savedLayouts: 'Saved layouts',
+    askDeleteLayout: 'Delete layout “{t}”?', dragHint: 'Press and hold to reorder or to drag a roll into a folder.',
     dbError: 'Storage is unavailable. Your data cannot be saved.',
     saveFail: 'Saving failed.'
   }
@@ -211,6 +215,8 @@ Object.assign(window.I18N, {
     importFail: 'Le fichier n’a pas pu être lu.', importNone: 'Le fichier ne contient aucune ligne de tableau.',
     imRoll: 'Pellicule (titre)', imLoc: 'Coordonnées (une colonne)',
     th_custom: 'Couleurs personnalisées', customEdit: 'Ajuster mes couleurs', el_bg: 'Fond', el_card: 'Surfaces', el_text: 'Texte', el_accent: 'Accent', el_second: 'Compteur',
+    pickOnMap: 'Choisir sur la carte', useLocation: 'Utiliser ce lieu', saveLayout: 'Enregistrer comme palette', layoutName: 'Nom de la palette', savedLayouts: 'Palettes enregistrées',
+    askDeleteLayout: 'Supprimer la palette « {t} » ?', dragHint: 'Maintiens appuyé pour réorganiser ou glisser une pellicule dans un dossier.',
     dbError: 'Le stockage est indisponible. Tes données ne peuvent pas être enregistrées.',
     saveFail: 'Échec de l’enregistrement.'
   },
@@ -281,6 +287,8 @@ Object.assign(window.I18N, {
     importFail: 'No se pudo leer el archivo.', importNone: 'El archivo no contiene filas de tabla.',
     imRoll: 'Carrete (título)', imLoc: 'Coordenadas (una columna)',
     th_custom: 'Colores propios', customEdit: 'Ajustar mis colores', el_bg: 'Fondo', el_card: 'Superficies', el_text: 'Texto', el_accent: 'Acento', el_second: 'Contador',
+    pickOnMap: 'Elegir en el mapa', useLocation: 'Usar esta ubicación', saveLayout: 'Guardar como paleta', layoutName: 'Nombre de la paleta', savedLayouts: 'Paletas guardadas',
+    askDeleteLayout: '¿Eliminar la paleta «{t}»?', dragHint: 'Mantén pulsado para reordenar o arrastrar un carrete a una carpeta.',
     dbError: 'El almacenamiento no está disponible. Tus datos no se pueden guardar.',
     saveFail: 'No se pudo guardar.'
   },
@@ -351,6 +359,8 @@ Object.assign(window.I18N, {
     importFail: 'Não foi possível ler o arquivo.', importNone: 'O arquivo não contém linhas de tabela.',
     imRoll: 'Rolo (título)', imLoc: 'Coordenadas (uma coluna)',
     th_custom: 'Cores próprias', customEdit: 'Ajustar minhas cores', el_bg: 'Fundo', el_card: 'Superfícies', el_text: 'Texto', el_accent: 'Destaque', el_second: 'Contador',
+    pickOnMap: 'Escolher no mapa', useLocation: 'Usar este local', saveLayout: 'Salvar como paleta', layoutName: 'Nome da paleta', savedLayouts: 'Paletas salvas',
+    askDeleteLayout: 'Excluir a paleta “{t}”?', dragHint: 'Mantenha pressionado para reordenar ou arrastar um rolo para uma pasta.',
     dbError: 'O armazenamento está indisponível. Seus dados não podem ser salvos.',
     saveFail: 'Falha ao salvar.'
   }

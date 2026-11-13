@@ -7,7 +7,7 @@
     nacht: { bar: '#000000', colors: ['#000000', '#2A0048', '#560072', '#800080', '#A90072', '#D50048', '#FF0000'], pdf: [213, 0, 72] },
     nebel: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] }
   };
-  const VERSION = '0.5';
+  const VERSION = '0.6';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
@@ -405,7 +405,7 @@
     return f ? f + ' ' + iso : 'ISO ' + iso;
   }
   function rollRow(r, onTap, extra) {
-    const sub = [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.'].filter(Boolean).join(', ');
+    const sub = [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.', r.pns ? 'Point-and-Shoot' : ''].filter(Boolean).join(', ');
     return h('button', { class: 'row' + (extra || ''), 'data-roll': r.id, onclick: onTap },
       h('span', { class: 'row-title' }, r.title),
       h('span', { class: 'row-side' }),
@@ -452,6 +452,7 @@
       const a = await ask(t('archive'), [{ label: t('newFolder'), value: 'folder' }, { label: t('importCsv'), value: 'import' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
       if (a === 'folder') { if (await createFolder()) refreshAll(); } else if (a === 'import') openImport();
     } }, icon('plus')));
+    if (kind === 'archive') sortable(sheet.body, dropInArchive);
     sheet.render = () => {
       sheet.setTitle(t(kind));
       if (kind === 'active') {
@@ -466,8 +467,13 @@
       if (rolls.length) kids.push(h('div', { class: 'seg tools' },
         h('button', { 'data-act': 'filter', onclick: openFilter }, icon('filter'), t('filter')),
         h('button', { 'data-act': 'map', onclick: () => openMap(t('archive'), shotsOf(rolls)) }, icon('map'), t('map'))));
-      folders.forEach(f => kids.push(folderRow(f, () => openFolder(f.id))));
-      rolls.filter(r => !r.folderId || !folderById(r.folderId)).forEach(r => kids.push(rollRow(r, () => openRoll(r.id))));
+      const items = archiveItems();
+      items.forEach(it => {
+        const row = it.folder ? folderRow(it.obj, () => openFolder(it.obj.id)) : rollRow(it.obj, () => openRoll(it.obj.id));
+        row.dataset.drag = it.key;
+        kids.push(row);
+      });
+      if (items.length > 1) kids.push(h('p', { class: 'hint drag-hint' }, t('dragHint')));
       if (!rolls.length && !folders.length) kids.push(h('p', { class: 'empty' }, t('emptyArchive')));
       sheet.body.replaceChildren(...kids);
     };
@@ -549,10 +555,10 @@
     sheet.render = () => {
       if (!rollById(id)) { sheet.close(); return; }
       const shots = rollShots(id);
-      sheet.setTitle(h('span', { class: 'counter', 'data-count': '' }, pad2(frameCount(id)) + ' / ' + roll.frames));
+      sheet.setTitle(h('span', { class: 'num', 'data-count': '' }, pad2(frameCount(id)) + ' / ' + roll.frames));
       heading.textContent = roll.title;
       tagLine.replaceChildren(...[tagChips(roll.tags)].filter(Boolean));
-      subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.'].filter(Boolean).join(' / ');
+      subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.', roll.pns ? 'Point-and-Shoot' : ''].filter(Boolean).join(' / ');
       const since = activeSince(id);
       info.textContent = since != null ? t('activeSince', { d: fmtDate(since) }) : t('noShotsYet');
       list.replaceChildren(...shots.map(s => shotRow(s)));
@@ -647,8 +653,8 @@
     const shot = shotId ? S.shots.find(s => s.id === shotId) : null;
     const isNew = !shot;
     const last = lastValues(rollId);
-    // Point-and-Shoot: nur Blitz, Standort und Zeit
-    const STEPS = roll.pns ? ['flash', 'loc', 'date', 'done'] : ['no', 'shutter', 'aperture', 'focal', 'flash', 'loc', 'date', 'notes', 'ref', 'done'];
+    // Point-and-Shoot: nur Blitz, Standort und Zeit, dazu Notiz und Referenzfoto
+    const STEPS = roll.pns ? ['flash', 'loc', 'date', 'notes', 'ref', 'done'] : ['no', 'shutter', 'aperture', 'focal', 'flash', 'loc', 'date', 'notes', 'ref', 'done'];
     const LAST = STEPS.length - 1;
     const d = isNew
       ? { no: nextNo(rollId), shutter: last.shutter, aperture: last.aperture, focal: last.focal, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null, flash: null }
@@ -821,7 +827,14 @@
           h('div', { class: 'big-value' + (has ? '' : ' dim'), 'data-loc': '' }, busy ? t('locBusy') : has ? fmtCoord(d.lat, d.lon) : t(geo.state === 'fail' ? 'locFail' : 'locNone')),
           has && d.acc != null ? h('p', { class: 'hint' }, '± ' + Math.round(d.acc) + ' m') : null,
           !busy && !has && geo.state === 'fail' && geo.why === 'denied' ? h('p', { class: 'hint', 'data-loc-denied': '' }, t('locDenied')) : null,
-          h('button', { class: 'btn', disabled: busy, onclick: locate }, icon('pin'), t('locRetry')));
+          h('button', { class: 'btn', disabled: busy, onclick: locate }, icon('pin'), t('locRetry')),
+          h('button', {
+            class: 'btn', 'data-act': 'pick-map', onclick: () => openPicker(d.lat != null ? { lat: d.lat, lon: d.lon, z: 16 } : lastPlace(rollId), c => {
+              geo.token++; geo.state = 'ok';
+              d.lat = c.lat; d.lon = c.lon; d.acc = null;
+              if (!sheet.closed) render();
+            })
+          }, icon('map'), t('pickOnMap')));
       }
       if (key === 'date') {
         return h('input', {
@@ -858,7 +871,7 @@
         row('shutter', d.shutter == null ? null : fmtShutterUnit(d.shutter)),
         row('aperture', d.aperture == null ? null : fmtAperture(d.aperture)),
         row('focal', d.focal == null ? null : fmtFocal(d.focal)),
-        row('flash', d.flash == null ? null : t(d.flash ? 'flashOn' : 'flashOff'), 'text'),
+        row('flash', d.flash == null ? null : cap(t(d.flash ? 'yes' : 'no')), 'text'),
         row('loc', geo.state === 'busy' ? t('locBusy') : d.lat != null ? fmtCoord(d.lat, d.lon) : null, geo.state === 'busy' ? 'text' : ''),
         row('date', d.date == null ? null : fmtDateTime(d.date)),
         row('notes', noteVal, 'text'),
@@ -1067,15 +1080,19 @@
         }
       }
     }, icon('more')));
+    sortable(sheet.body, async (from, to, mode) => {
+      await reorder(byOrder(archivedRolls().filter(r => r.folderId === id)).map(o => ({ obj: o, folder: false, key: 'r:' + o.id })), from, to, mode === 'into' ? 'before' : mode);
+      refreshAll();
+    });
     sheet.render = () => {
       const f = folderById(id);
       if (!f) { sheet.close(); return; }
       sheet.setTitle(f.name);
-      const rolls = archivedRolls().filter(r => r.folderId === id);
+      const rolls = byOrder(archivedRolls().filter(r => r.folderId === id));
       const chips = tagChips(f.tags);
       sheet.body.replaceChildren(...[
         chips ? h('div', { class: 'tags-block' }, chips) : null,
-        ...(rolls.length ? rolls.map(r => rollRow(r, () => openRoll(r.id))) : [h('p', { class: 'empty' }, t('emptyFolder'))])
+        ...(rolls.length ? rolls.map(r => { const row = rollRow(r, () => openRoll(r.id)); row.dataset.drag = 'r:' + r.id; return row; }) : [h('p', { class: 'empty' }, t('emptyFolder'))])
       ].filter(Boolean));
     };
     sheet.render();
@@ -1114,17 +1131,17 @@
     };
     const rolls = [], shots = [];
     archivedRolls().filter(rollOk).forEach(r => {
-      const ss = rollShots(r.id).reverse().filter(inDate);
-      if (!dateOn || ss.length) rolls.push(r);
+      const ss = rollShots(r.id).reverse().filter(inDate).filter(s => !c.flash.size || (s.flash != null && c.flash.has(!!s.flash)));
+      if ((!dateOn && !c.flash.size) || ss.length) rolls.push(r);
       shots.push(...ss);
     });
-    const onlyTags = c.tags.size && !c.cams.size && !c.films.size && !c.isos.size && !dateOn;
+    const onlyTags = c.tags.size && !c.cams.size && !c.films.size && !c.isos.size && !dateOn && !c.flash.size;
     const folders = c.tags.size ? S.folders.filter(f => (f.tags || []).some(x => c.tags.has(x)) && (onlyTags || rolls.some(r => r.folderId === f.id))) : [];
     return { folders, rolls, shots };
   }
 
   function openFilter() {
-    const c = { tags: new Set(), cams: new Set(), films: new Set(), isos: new Set(), years: new Set(), from: '', to: '' };
+    const c = { tags: new Set(), cams: new Set(), films: new Set(), isos: new Set(), years: new Set(), flash: new Set(), from: '', to: '' };
     const sheet = openSheet({ title: t('filter') });
     const go = h('button', { class: 'btn primary', 'data-act': 'filter-go', onclick: () => openResults(c) });
     sheet.foot.append(go);
@@ -1147,6 +1164,7 @@
         ...group(t('fCamera'), c.cams, uniq(rolls.map(r => r.camera)).sort()),
         ...group(t('fFilm'), c.films, uniq(rolls.map(filmLabel)).sort()),
         ...group(t('fIso'), c.isos, uniq(rolls.map(r => r.iso)).sort((a, b) => a - b)),
+        ...group(t('st_flash'), c.flash, [true, false], v => cap(t(v ? 'yes' : 'no'))),
         ...group(t('year'), c.years, uniq(shotsOf(rolls).filter(s => s.date != null).map(s => new Date(s.date).getFullYear())).sort()),
         h('p', { class: 'section-label' }, t('period')),
         h('div', { class: 'form' },
@@ -1483,11 +1501,137 @@
         h('div', { class: 'palette' }, PALETTE.flat().map(x => h('button', {
           class: 'swatch' + (c[el] === x ? ' on' : ''), style: 'background:' + x, 'aria-label': x, 'data-color': x,
           onclick: () => { S.settings.custom = Object.assign(customColors(), { [el]: x }); S.settings.theme = 'custom'; saveSettings(); }
-        }))));
+        }))),
+        h('button', {
+          class: 'btn below', 'data-act': 'layout-save', onclick: async () => {
+            const name = await askText(t('saveLayout'), '', t('layoutName'));
+            if (!name) return;
+            S.settings.layouts = (S.settings.layouts || []).concat({ id: uid(), name, colors: customColors() });
+            S.settings.custom = customColors();
+            S.settings.theme = 'custom';
+            saveSettings();
+            toast(t('saved'));
+          }
+        }, t('saveLayout')),
+        (S.settings.layouts || []).length ? h('p', { class: 'section-label' }, t('savedLayouts')) : null,
+        (S.settings.layouts || []).map(l => h('div', { class: 'tag-row' },
+          h('button', { class: 'tag-toggle' + (layoutActive(l) ? ' on' : ''), 'data-layout': l.name, onclick: () => { S.settings.custom = Object.assign({}, l.colors); S.settings.theme = 'custom'; saveSettings(); } },
+            h('span', null, l.name), h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + l.colors[k] })))),
+          h('button', {
+            class: 'icon-btn', 'aria-label': t('delete'), onclick: async () => {
+              const ok = await ask(t('askDeleteLayout', { t: l.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+              if (ok) { S.settings.layouts = S.settings.layouts.filter(x => x.id !== l.id); saveSettings(); }
+            }
+          }, icon('trash')))));
       sheet.body.scrollTop = top;
     };
     sheet.render();
   }
+
+  // ------------------------------------------------------------ Verschieben durch langes Halten
+  const byOrder = list => list.map((o, i) => ({ o, i })).sort((a, b) => {
+    const x = a.o.order == null ? -1 : a.o.order, y = b.o.order == null ? -1 : b.o.order;
+    return x - y || a.i - b.i;
+  }).map(x => x.o);
+  function archiveItems() {
+    const folders = S.folders.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const loose = archivedRolls().filter(r => !r.folderId || !folderById(r.folderId));
+    return byOrder(folders.concat(loose)).map(o => { const folder = S.folders.includes(o); return { obj: o, folder, key: (folder ? 'f:' : 'r:') + o.id }; });
+  }
+  async function reorder(items, from, to, mode) {
+    const a = items.slice(), i = a.findIndex(x => x.key === from);
+    if (i < 0) return;
+    const m = a.splice(i, 1)[0];
+    let j = a.findIndex(x => x.key === to);
+    if (j < 0) return;
+    if (mode === 'after') j++;
+    a.splice(j, 0, m);
+    for (let k = 0; k < a.length; k++) if (a[k].obj.order !== k) { a[k].obj.order = k; await DB.put(a[k].folder ? 'folders' : 'rolls', a[k].obj); }
+  }
+  async function dropInArchive(from, to, mode) {
+    if (mode === 'into') {
+      const r = rollById(from.slice(2));
+      if (!r) return;
+      r.folderId = to.slice(2); r.order = null;
+      await DB.put('rolls', r);
+      toast(t('saved'));
+    } else await reorder(archiveItems(), from, to, mode);
+    refreshAll();
+  }
+
+  // Zeilen mit data-drag lassen sich nach langem Halten ziehen. onDrop(von, nach, 'before' | 'after' | 'into')
+  function sortable(box, onDrop) {
+    let st = null;
+    const clear = () => box.querySelectorAll('.drop-before,.drop-after,.drop-into').forEach(e => e.classList.remove('drop-before', 'drop-after', 'drop-into'));
+    const end = commit => {
+      if (!st) return;
+      const s = st;
+      st = null;
+      clearTimeout(s.timer);
+      if (!s.active) return;
+      s.el.classList.remove('dragging');
+      s.el.style.transform = '';
+      s.el._noClickUntil = Date.now() + 450;
+      clear();
+      if (commit && s.target) onDrop(s.el.dataset.drag, s.target.el.dataset.drag, s.target.mode);
+    };
+    box.addEventListener('pointerdown', e => {
+      const el = e.target.closest('[data-drag]');
+      if (!el || !box.contains(el) || st) return;
+      const s = { el, x: e.clientX, y: e.clientY, id: e.pointerId, active: false, target: null };
+      s.timer = setTimeout(() => {
+        if (st !== s) return;
+        s.active = true;
+        el.classList.add('dragging');
+        try { box.setPointerCapture(s.id); } catch (err) {}
+      }, 450);
+      st = s;
+    });
+    box.addEventListener('pointermove', e => {
+      if (!st || e.pointerId !== st.id) return;
+      const dx = e.clientX - st.x, dy = e.clientY - st.y;
+      if (!st.active) { if (Math.hypot(dx, dy) > 8) end(false); return; }
+      st.el.style.transform = 'translateY(' + dy + 'px)';
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const tEl = under && under.closest('[data-drag]');
+      clear();
+      st.target = null;
+      if (tEl && tEl !== st.el && box.contains(tEl)) {
+        const r = tEl.getBoundingClientRect(), rel = (e.clientY - r.top) / r.height;
+        const into = tEl.dataset.drag[0] === 'f' && st.el.dataset.drag[0] === 'r' && rel > 0.25 && rel < 0.75;
+        const mode = into ? 'into' : rel < 0.5 ? 'before' : 'after';
+        tEl.classList.add('drop-' + mode);
+        st.target = { el: tEl, mode };
+      }
+      const b = box.getBoundingClientRect();
+      if (e.clientY < b.top + 50) box.scrollTop -= 8; else if (e.clientY > b.bottom - 50) box.scrollTop += 8;
+    });
+    box.addEventListener('pointerup', e => { if (st && e.pointerId === st.id) end(true); });
+    box.addEventListener('pointercancel', e => { if (st && e.pointerId === st.id) end(false); });
+    box.addEventListener('touchmove', e => { if (st && st.active) e.preventDefault(); }, { passive: false });
+    box.addEventListener('contextmenu', e => { if (st) e.preventDefault(); });
+    box.addEventListener('click', e => {
+      const el = e.target.closest('[data-drag]');
+      if (el && el._noClickUntil > Date.now()) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  }
+
+  // ------------------------------------------------------------ Standort auf der Karte wählen
+  function openPicker(start, onPick) {
+    const sheet = openSheet({ title: t('pickOnMap') });
+    sheet.body.classList.add('map-body');
+    const box = h('div', { class: 'map' });
+    sheet.body.append(box);
+    const map = window.FilmMap.create(box, [], { picker: true, center: start });
+    sheet.foot.append(h('button', { class: 'btn primary', 'data-act': 'pick-ok', onclick: () => { const c = map.center(); sheet.close(); onPick(c); } }, t('useLocation')));
+    if (navigator.onLine === false) toast(t('mapOffline'));
+  }
+  function lastPlace(rollId) {
+    const list = S.shots.filter(s => s.lat != null).sort((a, b) => (b.rollId === rollId) - (a.rollId === rollId) || b.createdAt - a.createdAt);
+    return list.length ? { lat: list[0].lat, lon: list[0].lon, z: 15 } : { lat: 51.16, lon: 10.45, z: 5 };
+  }
+  const layoutActive = l => S.settings.theme === 'custom' && CUSTOM_KEYS.every(k => l.colors[k] === customColors()[k]);
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
   // ------------------------------------------------------------ Export
   function shareFile(file) {
@@ -1698,6 +1842,7 @@
     S.tags = data.tags || [];
     if (data.settings) {
       if (data.settings.custom) S.settings.custom = data.settings.custom;
+      if (Array.isArray(data.settings.layouts)) S.settings.layouts = data.settings.layouts;
       if (THEMES[data.settings.theme] || data.settings.theme === 'custom') S.settings.theme = data.settings.theme;
       if (window.I18N[data.settings.lang]) S.settings.lang = data.settings.lang;
     }
@@ -1716,7 +1861,10 @@
         h('div', { class: 'themes' }, Object.keys(THEMES).map(k => h('button', { class: 'theme' + (S.settings.theme === k ? ' on' : ''), 'data-theme-pick': k, onclick: () => { S.settings.theme = k; saveSettings(); } },
           h('span', null, t('th_' + k)),
           h('span', { class: 'swatches' }, THEMES[k].colors.map(c => h('i', { style: 'background:' + c })))))
-          .concat(h('button', { class: 'theme' + (S.settings.theme === 'custom' ? ' on' : ''), 'data-theme-pick': 'custom', onclick: () => { if (!S.settings.custom) S.settings.custom = Object.assign({}, CUSTOM_DEFAULT); S.settings.theme = 'custom'; saveSettings(); } },
+          .concat((S.settings.layouts || []).map(l => h('button', { class: 'theme' + (layoutActive(l) ? ' on' : ''), 'data-layout': l.name, onclick: () => { S.settings.custom = Object.assign({}, l.colors); S.settings.theme = 'custom'; saveSettings(); } },
+            h('span', null, l.name),
+            h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + l.colors[k] }))))))
+          .concat(h('button', { class: 'theme' + (S.settings.theme === 'custom' && !(S.settings.layouts || []).some(layoutActive) ? ' on' : ''), 'data-theme-pick': 'custom', onclick: () => { if (!S.settings.custom) S.settings.custom = Object.assign({}, CUSTOM_DEFAULT); S.settings.theme = 'custom'; saveSettings(); } },
             h('span', null, t('th_custom')),
             h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + customColors()[k] })))))),
         h('button', { class: 'btn below-s', 'data-act': 'custom-edit', onclick: openCustom }, t('customEdit')),
