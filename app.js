@@ -7,13 +7,14 @@
     nacht: { bar: '#000000', colors: ['#000000', '#2A0048', '#560072', '#800080', '#A90072', '#D50048', '#FF0000'], pdf: [213, 0, 72] },
     nebel: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] }
   };
+  const VERSION = '0.5';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
-  const DEFAULTS = { shutter: '1/125', aperture: '8', focal: 50 };
+  const DEFAULTS = { shutter: '1/125', aperture: '8', focal: 50, flash: false };
   const STEPS = ['no', 'shutter', 'aperture', 'focal', 'loc', 'date', 'notes', 'ref', 'done'];
   const LAST = STEPS.length - 1;
-  const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note'];
+  const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note', 'pns'];
 
   const S = { rolls: [], shots: [], folders: [], tags: [], settings: { theme: 'salbei', lang: 'de' } };
 
@@ -48,7 +49,8 @@
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
     folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
     filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
-    map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>'
+    map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
+    bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>'
   };
   function icon(name) {
     const s = h('span', { class: 'ico', 'aria-hidden': 'true' });
@@ -281,12 +283,13 @@
     home.replaceChildren(
       h('div', null,
         h('h1', { class: 'brand' }, 'Film_Log'),
+        h('p', { class: 'brand-version' }, 'Version ' + VERSION),
         h('p', { class: 'brand-sub' }, S.rolls.length ? t('homeStats')(S.rolls.length, S.shots.length) : t('homeEmpty'))),
       h('div', null,
         h('nav', { class: 'menu' },
           item('create', () => openCreate()),
-          item('active', openActive, h('span', { class: 'counter', 'aria-label': String(active) }, active)),
-          item('archive', () => openList('archive'), h('span', { class: 'counter', 'aria-label': String(S.rolls.length - active) }, S.rolls.length - active)),
+          item('active', openActive, active ? h('span', { class: 'menu-count' }, active) : null),
+          item('archive', () => openList('archive'), S.rolls.length - active ? h('span', { class: 'menu-count' }, S.rolls.length - active) : null),
           item('export', () => openExport()),
           item('settings', openSettings)),
         standalone ? null : h('p', { class: 'install-hint' }, t('installHint'))));
@@ -335,6 +338,9 @@
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('fPush')), push),
       h('div', { class: 'field' }),
       h('div', { class: 'field wide' }, h('span', { class: 'field-label' }, t('fFrames')), h('div', { class: 'chips' }, chips, other)),
+      h('label', { class: 'field wide switch-row' },
+        h('span', null, h('b', null, t('pns')), h('small', null, t('pnsHint'))),
+        h('input', { type: 'checkbox', class: 'switch', role: 'switch', 'data-field': 'pns', checked: d.pns ? true : null, onchange: e => { d.pns = e.target.checked; } })),
       input('note', t('fNote'), { cls: 'wide' }));
   }
   function cleanRoll(d, fallbackTitle) {
@@ -342,6 +348,7 @@
     o.title = (o.title || '').trim() || fallbackTitle;
     o.film = (o.film || '').trim(); o.camera = (o.camera || '').trim(); o.note = (o.note || '').trim();
     o.push = o.push || 0;
+    o.pns = !!o.pns;
     o.frames = o.frames > 0 ? o.frames : 36;
     return o;
   }
@@ -349,7 +356,7 @@
   // ------------------------------------------------------------ Erstellen
   function openCreate() {
     const fallback = nextTitle();
-    const d = { title: fallback, film: '', iso: null, ei: null, push: 0, camera: '', frames: 36, note: '' };
+    const d = { title: fallback, film: '', iso: null, ei: null, push: 0, camera: '', frames: 36, note: '', pns: false };
     const orig = JSON.stringify(d);
     let saving = false;
     const save = async () => {
@@ -419,10 +426,12 @@
   }
   function shotRow(s, withRoll) {
     const val = (v, f) => h('span', { class: v == null ? 'nil' : null }, v == null ? '–' : f(v));
-    const roll = withRoll ? rollById(s.rollId) : null;
+    const roll = rollById(s.rollId);
+    const pns = !!(roll && roll.pns);
     const meta = [
-      roll ? h('span', null, roll.title) : null,
-      s.date != null ? h('span', null, fmtDateTime(s.date)) : null,
+      withRoll && roll ? h('span', null, roll.title) : null,
+      s.date != null && !pns ? h('span', null, fmtDateTime(s.date)) : null,
+      s.flash ? icon('bolt') : null,
       s.lat != null ? icon('pin') : null,
       s.audioId ? icon('mic') : null,
       s.note ? h('span', null, s.note) : null
@@ -430,7 +439,8 @@
     return h('button', { class: 'shot' + (s.sub > 1 ? ' sub' : ''), 'data-shot': noLabel(s.no, s.sub), onclick: () => openShot(s.rollId, s.id) },
       h('span', { class: 'shot-no' }, noLabel(s.no, s.sub)),
       h('span', null,
-        h('span', { class: 'shot-vals' }, val(s.shutter, fmtShutter), val(s.aperture, fmtAperture), val(s.focal, fmtFocal)),
+        pns ? h('span', { class: 'shot-vals one' }, val(s.date, fmtDateTime))
+          : h('span', { class: 'shot-vals' }, val(s.shutter, fmtShutter), val(s.aperture, fmtAperture), val(s.focal, fmtFocal)),
         h('span', { class: 'shot-meta' }, meta)),
       s.thumb ? h('img', { class: 'shot-thumb', src: s.thumb, alt: '' }) : h('span'));
   }
@@ -438,7 +448,10 @@
   function openList(kind) {
     const sheet = openSheet({ title: t(kind) });
     if (kind === 'active') sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('newRoll'), 'data-act': 'add', onclick: () => openCreate() }, icon('plus')));
-    else sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('newFolder'), 'data-act': 'add-folder', onclick: async () => { if (await createFolder()) refreshAll(); } }, icon('plus')));
+    else sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('newFolder'), 'data-act': 'add-folder', onclick: async () => {
+      const a = await ask(t('archive'), [{ label: t('newFolder'), value: 'folder' }, { label: t('importCsv'), value: 'import' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+      if (a === 'folder') { if (await createFolder()) refreshAll(); } else if (a === 'import') openImport();
+    } }, icon('plus')));
     sheet.render = () => {
       sheet.setTitle(t(kind));
       if (kind === 'active') {
@@ -466,6 +479,7 @@
     const roll = rollById(id);
     if (!roll) return;
     const d = pickRoll(roll);
+    d.pns = !!d.pns;
     let orig = JSON.stringify(d);
     const dirty = () => JSON.stringify(d) !== orig;
     const saveMaster = async () => {
@@ -633,11 +647,15 @@
     const shot = shotId ? S.shots.find(s => s.id === shotId) : null;
     const isNew = !shot;
     const last = lastValues(rollId);
+    // Point-and-Shoot: nur Blitz, Standort und Zeit
+    const STEPS = roll.pns ? ['flash', 'loc', 'date', 'done'] : ['no', 'shutter', 'aperture', 'focal', 'flash', 'loc', 'date', 'notes', 'ref', 'done'];
+    const LAST = STEPS.length - 1;
     const d = isNew
-      ? { no: nextNo(rollId), shutter: last.shutter, aperture: last.aperture, focal: last.focal, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null }
-      : { no: shot.no, shutter: shot.shutter, aperture: shot.aperture, focal: shot.focal, lat: shot.lat, lon: shot.lon, acc: shot.acc, date: shot.date, note: shot.note || '', audioId: shot.audioId || null, photoId: shot.photoId || null, thumb: shot.thumb || null };
+      ? { no: nextNo(rollId), shutter: last.shutter, aperture: last.aperture, focal: last.focal, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null, flash: null }
+      : { flash: shot.flash == null ? null : !!shot.flash, no: shot.no, shutter: shot.shutter, aperture: shot.aperture, focal: shot.focal, lat: shot.lat, lon: shot.lon, acc: shot.acc, date: shot.date, note: shot.note || '', audioId: shot.audioId || null, photoId: shot.photoId || null, thumb: shot.thumb || null };
+    if (isNew && roll.pns) d.shutter = d.aperture = d.focal = null;
     const orig = JSON.stringify(d);
-    const wheelVal = { shutter: d.shutter != null ? d.shutter : last.shutter, aperture: d.aperture != null ? d.aperture : last.aperture, focal: d.focal != null ? d.focal : last.focal };
+    const wheelVal = { flash: d.flash != null ? d.flash : !!last.flash, shutter: d.shutter != null ? d.shutter : last.shutter, aperture: d.aperture != null ? d.aperture : last.aperture, focal: d.focal != null ? d.focal : last.focal };
 
     let step = isNew ? 0 : LAST, jumped = false, saving = false;
     let newPhoto = null, newPhotoUrl = null, newAudio = null, newAudioUrl = null;
@@ -792,6 +810,10 @@
       if (key === 'shutter') return makeWheel(SHUTTERS, v => v, wheelVal.shutter, v => { wheelVal.shutter = v; });
       if (key === 'aperture') return makeWheel(APERTURES, fmtAperture, wheelVal.aperture, v => { wheelVal.aperture = v; });
       if (key === 'focal') return makeWheel(FOCALS, fmtFocal, wheelVal.focal, v => { wheelVal.focal = v; });
+      if (key === 'flash') {
+        return h('div', { class: 'seg flash-seg' }, [[false, 'flashOff'], [true, 'flashOn']].map(([v, k]) =>
+          h('button', { class: wheelVal.flash === v ? 'on' : '', 'data-flash': String(v), onclick: () => { wheelVal.flash = v; render(); } }, v ? icon('bolt') : null, t(k))));
+      }
       if (key === 'loc') {
         const busy = geo.state === 'busy';
         const has = d.lat != null && !busy;
@@ -827,19 +849,20 @@
           h('button', { class: 'btn', onclick: () => libIn.click() }, icon('image'), t('pickPhoto')));
       }
       // Übersicht
-      const row = (i, value, cls) => h('button', { class: 'sum-row', 'data-jump': STEPS[i], onclick: () => { step = i; jumped = true; render(); } },
-        h('span', { class: 'sum-label' }, t('st_' + STEPS[i])),
+      const row = (name, value, cls) => STEPS.indexOf(name) < 0 ? null : h('button', { class: 'sum-row', 'data-jump': name, onclick: () => { step = STEPS.indexOf(name); jumped = true; render(); } },
+        h('span', { class: 'sum-label' }, t('st_' + name)),
         h('span', { class: 'sum-value' + (value == null || value === '' ? ' nil' : '') + (cls ? ' ' + cls : '') }, value == null || value === '' ? '–' : value));
       const noteVal = d.note ? d.note : hasAudio() ? t('voiceNote') : null;
       return h('div', null,
-        row(0, noLabel(d.no, predictedSub())),
-        row(1, d.shutter == null ? null : fmtShutterUnit(d.shutter)),
-        row(2, d.aperture == null ? null : fmtAperture(d.aperture)),
-        row(3, d.focal == null ? null : fmtFocal(d.focal)),
-        row(4, geo.state === 'busy' ? t('locBusy') : d.lat != null ? fmtCoord(d.lat, d.lon) : null, geo.state === 'busy' ? 'text' : ''),
-        row(5, d.date == null ? null : fmtDateTime(d.date)),
-        row(6, noteVal, 'text'),
-        row(7, d.thumb ? h('img', { src: d.thumb, alt: t('photo') }) : hasPhoto() ? t('photo') : null),
+        row('no', noLabel(d.no, predictedSub())),
+        row('shutter', d.shutter == null ? null : fmtShutterUnit(d.shutter)),
+        row('aperture', d.aperture == null ? null : fmtAperture(d.aperture)),
+        row('focal', d.focal == null ? null : fmtFocal(d.focal)),
+        row('flash', d.flash == null ? null : t(d.flash ? 'flashOn' : 'flashOff'), 'text'),
+        row('loc', geo.state === 'busy' ? t('locBusy') : d.lat != null ? fmtCoord(d.lat, d.lon) : null, geo.state === 'busy' ? 'text' : ''),
+        row('date', d.date == null ? null : fmtDateTime(d.date)),
+        row('notes', noteVal, 'text'),
+        row('ref', d.thumb ? h('img', { src: d.thumb, alt: t('photo') }) : hasPhoto() ? t('photo') : null),
         isNew ? null : h('div', { class: 'below' }, h('button', { class: 'btn outline', 'data-act': 'shot-delete', onclick: removeShot }, icon('trash'), t('deleteShot'))));
     }
 
@@ -1184,7 +1207,7 @@
     const exposure = sh == null || sh === 'B' ? null : /s$/.test(sh) ? [parseInt(sh, 10), 1] : sh.split('/').map(Number);
     return {
       description: s.note || '', model: roll.camera || '', date: s.date, exposure,
-      fnumber: s.aperture == null ? null : Number(s.aperture), iso: roll.ei || roll.iso || null, focal: s.focal, lat: s.lat, lon: s.lon,
+      fnumber: s.aperture == null ? null : Number(s.aperture), iso: roll.ei || roll.iso || null, focal: s.focal, flash: s.flash == null ? null : !!s.flash, lat: s.lat, lon: s.lon,
       comment: [filmLabel(roll) ? 'Film: ' + filmLabel(roll) : '', roll.push ? 'Push/Pull ' + (roll.push > 0 ? '+' : '') + roll.push : '', 'Shot ' + noLabel(s.no, s.sub)].filter(Boolean).join(', ')
     };
   }
@@ -1305,6 +1328,167 @@
     sheet.render();
   }
 
+  // ------------------------------------------------------------ Import aus CSV
+  const IMPORT_FIELDS = [
+    ['roll', 'imRoll'], ['no', 'st_no'], ['shutter', 'st_shutter'], ['aperture', 'st_aperture'], ['focal', 'st_focal'], ['flash', 'st_flash'],
+    ['date', 'st_date'], ['time', 'cTime'], ['lat', 'cLat'], ['lon', 'cLon'], ['loc', 'imLoc'], ['notes', 'st_notes'],
+    ['film', 'fFilm'], ['iso', 'fIso'], ['camera', 'fCamera']
+  ];
+  // Spaltennamen aus dem eigenen Export aller Sprachen ebenfalls erkennen
+  function importNames() {
+    const cols = { cShot: 'no', cShutter: 'shutter', cAperture: 'aperture', cFocal: 'focal', cFlash: 'flash', cLat: 'lat', cLon: 'lon', cDate: 'date', cTime: 'time', cNotes: 'notes' };
+    const metas = { fTitle: 'title', fFilm: 'film', fCamera: 'camera', fIso: 'iso', fEi: 'ei', fPush: 'push', fNote: 'note', mShots: 'frames' };
+    const extra = {}, metaMap = {};
+    Object.values(window.I18N).forEach(d => {
+      for (const k in cols) if (typeof d[k] === 'string') (extra[cols[k]] = extra[cols[k]] || []).push(d[k]);
+      for (const k in metas) if (typeof d[k] === 'string') metaMap[window.FilmImport.norm(d[k])] = metas[k];
+    });
+    return { extra, metaMap };
+  }
+  const loadLearned = () => { try { return JSON.parse(localStorage.getItem('filmlog.csvmap') || '{}'); } catch (e) { return {}; } };
+
+  function openImport() {
+    const sheet = openSheet({ title: t('importCsv') });
+    const names = importNames();
+    let parsed = null, map = {}, fileTitle = '', busy = false;
+    const go = h('button', { class: 'btn primary', 'data-act': 'import-go', onclick: run });
+    const fileIn = h('input', {
+      type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain', hidden: true, 'data-in': 'import', onchange: async e => {
+        const f = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!f) return;
+        try {
+          const buf = await f.arrayBuffer();
+          let text = new TextDecoder('utf-8').decode(buf);
+          if (text.includes('�')) text = new TextDecoder('windows-1252').decode(buf);
+          const p = window.FilmImport.parseCsv(text);
+          if (!p.rows.length) { toast(t('importNone')); return; }
+          parsed = p;
+          fileTitle = f.name.replace(/\.[^.]+$/, '');
+          map = window.FilmImport.guess(p.header, loadLearned(), names.extra);
+          sheet.render();
+        } catch (err) { toast(t('importFail')); }
+      }
+    });
+    const result = () => window.FilmImport.build(parsed, map, { title: fileTitle, metaMap: names.metaMap });
+
+    async function run() {
+      if (busy || !parsed) return;
+      busy = true;
+      try {
+        const learned = loadLearned();
+        for (const f in map) if (map[f] != null) learned[window.FilmImport.norm(parsed.header[map[f]])] = f;
+        try { localStorage.setItem('filmlog.csvmap', JSON.stringify(learned)); } catch (e) {}
+        const list = result(), now = Date.now(), rolls = [], shots = [];
+        list.forEach((g, gi) => {
+          const dates = g.shots.map(s => s.date).filter(x => x != null);
+          const roll = Object.assign({ id: uid(), createdAt: dates.length ? Math.min(...dates) : now + gi, archived: true, askedFull: true, tags: [], folderId: null, pns: false }, g.roll);
+          rolls.push(roll);
+          g.shots.forEach((s, i) => shots.push(Object.assign({ id: uid(), rollId: roll.id, createdAt: now + i, audioId: null, photoId: null, thumb: null }, s)));
+        });
+        await DB.run(['rolls', 'shots'], 'readwrite', tx => {
+          rolls.forEach(r => tx.objectStore('rolls').put(r));
+          shots.forEach(s => tx.objectStore('shots').put(s));
+        });
+        S.rolls.push(...rolls);
+        S.shots.push(...shots);
+        sheet.close();
+        refreshAll();
+        toast(t('imported')(rolls.length, shots.length));
+      } catch (e) {
+        busy = false;
+        toast(t('importFail'));
+      }
+    }
+
+    sheet.render = () => {
+      sheet.setTitle(t('importCsv'));
+      if (!parsed) {
+        sheet.foot.replaceChildren();
+        sheet.body.replaceChildren(h('p', { class: 'note' }, t('importIntro')), h('button', { class: 'btn', onclick: () => fileIn.click() }, t('importPick')), fileIn);
+        return;
+      }
+      const sample = parsed.rows[0] || [];
+      const list = result();
+      const top = sheet.body.scrollTop;
+      sheet.body.replaceChildren(
+        h('p', { class: 'note', 'data-import-info': '' }, t('importInfo')(parsed.rows.length, parsed.header.filter(Boolean).length)),
+        h('div', { class: 'map-list' }, IMPORT_FIELDS.map(([f, label]) => {
+          const sel = h('select', { 'data-map': f, 'aria-label': t(label), onchange: e => { if (e.target.value === '') delete map[f]; else map[f] = Number(e.target.value); sheet.render(); } },
+            h('option', { value: '' }, '–'), parsed.header.map((hd, i) => (hd ? h('option', { value: i }, hd) : null)));
+          sel.value = map[f] == null ? '' : String(map[f]);
+          return h('div', { class: 'map-row' },
+            h('span', { class: 'map-label' }, t(label), map[f] != null && sample[map[f]] ? h('small', null, sample[map[f]]) : null),
+            h('label', { class: 'field' }, sel));
+        })),
+        fileIn);
+      sheet.body.scrollTop = top;
+      sheet.foot.className = 'sheet-foot';
+      if (!sheet.foot.firstChild) sheet.foot.append(go);
+      go.textContent = t('importGo')(list.length, list.reduce((n, g) => n + g.shots.length, 0));
+    };
+    sheet.render();
+  }
+
+  // ------------------------------------------------------------ Eigene Farben
+  const hexRgb = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16));
+  const rgbHex = a => '#' + a.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('').toUpperCase();
+  const mixHex = (a, b, k) => { const p = hexRgb(a), q = hexRgb(b); return rgbHex(p.map((v, i) => v + (q[i] - v) * k)); };
+  const lumHex = x => { const c = hexRgb(x).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const onHex = x => (lumHex(x) > 0.36 ? '#141414' : '#FFFFFF');
+  function hslHex(hh, s, l) {
+    s /= 100; l /= 100;
+    const k = n => (n + hh / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return rgbHex([f(0) * 255, f(8) * 255, f(4) * 255]);
+  }
+  const CUSTOM_KEYS = ['bg', 'card', 'text', 'accent', 'second'];
+  const CUSTOM_DEFAULT = { bg: '#EEEDE9', card: '#DEDCCB', text: '#2B2622', accent: '#98503F', second: '#A2B08F' };
+  // aus fünf gewählten Farben alle Töne der Oberfläche ableiten
+  function customVars(c) {
+    return {
+      '--bg': c.bg, '--sheet': c.bg, '--card': c.card, '--line': mixHex(c.card, c.text, 0.22), '--text': c.text, '--muted': mixHex(c.text, c.bg, 0.36),
+      '--accent': c.accent, '--on-accent': onHex(c.accent), '--second': c.second, '--on-second': onHex(c.second), '--third': mixHex(c.accent, c.bg, 0.5),
+      '--shade': lumHex(c.bg) < 0.2 ? 'rgba(0, 0, 0, .66)' : 'rgba(30, 30, 30, .42)'
+    };
+  }
+  function customColors() {
+    const c = Object.assign({}, CUSTOM_DEFAULT, S.settings.custom || {});
+    CUSTOM_KEYS.forEach(k => { if (!/^#[0-9a-f]{6}$/i.test(c[k])) c[k] = CUSTOM_DEFAULT[k]; });
+    return c;
+  }
+  const PALETTE = (() => {
+    const light = [96, 88, 76, 62, 48, 34, 20, 9], rows = [light.map(l => hslHex(40, 6, l))];
+    [0, 18, 36, 52, 80, 130, 165, 190, 212, 235, 265, 295, 330].forEach(hue => rows.push(light.map(l => hslHex(hue, l > 85 ? 55 : l < 15 ? 60 : 68, l))));
+    return rows;
+  })();
+
+  function openCustom() {
+    let el = 'bg';
+    const sheet = openSheet({ title: t('customEdit') });
+    if (!S.settings.custom) {
+      // mit den Farben des aktuellen Themes beginnen
+      const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
+      const start = { bg: v('--bg'), card: v('--card'), text: v('--text'), accent: v('--accent'), second: v('--second') };
+      S.settings.custom = Object.assign({}, CUSTOM_DEFAULT);
+      CUSTOM_KEYS.forEach(k => { if (/^#[0-9a-f]{6}$/i.test(start[k])) S.settings.custom[k] = start[k].toUpperCase(); });
+    }
+    sheet.render = () => {
+      sheet.setTitle(t('customEdit'));
+      const c = customColors();
+      const top = sheet.body.scrollTop;
+      sheet.body.replaceChildren(
+        h('div', { class: 'pills' }, CUSTOM_KEYS.map(k => h('button', { class: 'pill' + (el === k ? ' on' : ''), 'data-el': k, onclick: () => { el = k; sheet.render(); } },
+          h('i', { class: 'pill-dot big', style: 'background:' + c[k] }), t('el_' + k)))),
+        h('div', { class: 'palette' }, PALETTE.flat().map(x => h('button', {
+          class: 'swatch' + (c[el] === x ? ' on' : ''), style: 'background:' + x, 'aria-label': x, 'data-color': x,
+          onclick: () => { S.settings.custom = Object.assign(customColors(), { [el]: x }); S.settings.theme = 'custom'; saveSettings(); }
+        }))));
+      sheet.body.scrollTop = top;
+    };
+    sheet.render();
+  }
+
   // ------------------------------------------------------------ Export
   function shareFile(file) {
     try {
@@ -1348,12 +1532,13 @@
     const date = ms => { const d = new Date(ms); return de ? pad2(d.getDate()) + sep + pad2(d.getMonth() + 1) + sep + d.getFullYear() : d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
     const time = ms => { const d = new Date(ms); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
     const meta = [[t('fTitle'), roll.title]].concat(rollMeta(roll).map(m => [m.label, m.value === '–' ? '' : m.value]), [[t('fNote'), roll.note || '']]);
-    const header = [t('cShot'), t('cShutter'), t('cAperture'), t('cFocal'), t('cLat'), t('cLon'), t('cDate'), t('cTime'), t('cNotes'), t('cRef')];
+    const header = [t('cShot'), t('cShutter'), t('cAperture'), t('cFocal'), t('cFlash'), t('cLat'), t('cLon'), t('cDate'), t('cTime'), t('cNotes'), t('cRef')];
     const rows = rollShots(roll.id).reverse().map(s => [
       noLabel(s.no, s.sub),
       s.shutter == null ? '' : fmtShutterUnit(s.shutter),
       s.aperture == null ? '' : 'f/' + num(s.aperture),
       s.focal == null ? '' : s.focal,
+      s.flash == null ? '' : t(s.flash ? 'yes' : 'no'),
       s.lat == null ? '' : num(s.lat.toFixed(6)),
       s.lon == null ? '' : num(s.lon.toFixed(6)),
       s.date == null ? '' : date(s.date),
@@ -1384,13 +1569,14 @@
       const lines = [];
       if (s.date != null) lines.push(fmtDateTime(s.date));
       if (s.lat != null) lines.push(fmtCoord(s.lat, s.lon));
+      if (s.flash != null) lines.push(t('st_flash') + ': ' + t(s.flash ? 'yes' : 'no'));
       shots.push({ no: noLabel(s.no, s.sub), main, lines, note: s.note || '', image });
     }
     const meta = rollMeta(roll);
     if (roll.note) meta.push({ label: t('fNote'), value: roll.note, wide: true });
     return window.FilmExport.pdf({
       title: roll.title, subtitle: t('pdfExported', { d: fmtDate(Date.now()) }), pageLabel: t('pdfPage'), emptyText: t('pdfNoShots'),
-      meta, shots, accent: THEMES[S.settings.theme].pdf, measure
+      meta, shots, accent: S.settings.theme === 'custom' ? hexRgb(customColors().accent) : THEMES[S.settings.theme].pdf, measure
     });
   }
 
@@ -1449,14 +1635,16 @@
   // ------------------------------------------------------------ Einstellungen und Backup
   function loadSettings() {
     try { Object.assign(S.settings, JSON.parse(localStorage.getItem('filmlog.settings') || '{}')); } catch (e) {}
-    if (!THEMES[S.settings.theme]) S.settings.theme = 'salbei';
+    if (!THEMES[S.settings.theme] && S.settings.theme !== 'custom') S.settings.theme = 'salbei';
     if (!window.I18N[S.settings.lang]) S.settings.lang = 'de';
   }
   function applySettings() {
     document.documentElement.dataset.theme = S.settings.theme;
     document.documentElement.lang = S.settings.lang;
     const m = document.querySelector('meta[name="theme-color"]');
-    if (m) m.setAttribute('content', THEMES[S.settings.theme].bar);
+    const custom = S.settings.theme === 'custom' ? customVars(customColors()) : null;
+    Object.keys(customVars(CUSTOM_DEFAULT)).forEach(k => { if (custom) document.documentElement.style.setProperty(k, custom[k]); else document.documentElement.style.removeProperty(k); });
+    if (m) m.setAttribute('content', custom ? custom['--bg'] : THEMES[S.settings.theme].bar);
   }
   function saveSettings() {
     try { localStorage.setItem('filmlog.settings', JSON.stringify(S.settings)); } catch (e) {}
@@ -1509,7 +1697,8 @@
     S.folders = data.folders || [];
     S.tags = data.tags || [];
     if (data.settings) {
-      if (THEMES[data.settings.theme]) S.settings.theme = data.settings.theme;
+      if (data.settings.custom) S.settings.custom = data.settings.custom;
+      if (THEMES[data.settings.theme] || data.settings.theme === 'custom') S.settings.theme = data.settings.theme;
       if (window.I18N[data.settings.lang]) S.settings.lang = data.settings.lang;
     }
     saveSettings();
@@ -1526,7 +1715,11 @@
         h('p', { class: 'section-label' }, t('setTheme')),
         h('div', { class: 'themes' }, Object.keys(THEMES).map(k => h('button', { class: 'theme' + (S.settings.theme === k ? ' on' : ''), 'data-theme-pick': k, onclick: () => { S.settings.theme = k; saveSettings(); } },
           h('span', null, t('th_' + k)),
-          h('span', { class: 'swatches' }, THEMES[k].colors.map(c => h('i', { style: 'background:' + c })))))),
+          h('span', { class: 'swatches' }, THEMES[k].colors.map(c => h('i', { style: 'background:' + c })))))
+          .concat(h('button', { class: 'theme' + (S.settings.theme === 'custom' ? ' on' : ''), 'data-theme-pick': 'custom', onclick: () => { if (!S.settings.custom) S.settings.custom = Object.assign({}, CUSTOM_DEFAULT); S.settings.theme = 'custom'; saveSettings(); } },
+            h('span', null, t('th_custom')),
+            h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + customColors()[k] })))))),
+        h('button', { class: 'btn below-s', 'data-act': 'custom-edit', onclick: openCustom }, t('customEdit')),
         h('p', { class: 'section-label' }, t('setLang')),
         h('div', { class: 'pills' }, [['de', 'Deutsch'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português']].map(([k, name]) => h('button', { class: 'pill' + (S.settings.lang === k ? ' on' : ''), 'data-lang': k, onclick: () => { S.settings.lang = k; saveSettings(); } }, name))),
         h('p', { class: 'section-label' }, t('setBackup')),

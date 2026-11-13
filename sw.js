@@ -1,6 +1,6 @@
 /* Offline support: with a connection the newest files are loaded, otherwise the cached copy. */
-const CACHE = 'film-log-v4';
-const ASSETS = ['./', 'index.html', 'styles.css', 'i18n.js', 'export.js', 'scan.js', 'map.js', 'jszip.min.js', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'film-log-v5';
+const ASSETS = ['./', 'index.html', 'styles.css', 'i18n.js', 'export.js', 'scan.js', 'map.js', 'import.js', 'jszip.min.js', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
