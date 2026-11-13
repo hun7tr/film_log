@@ -278,13 +278,13 @@
     const item = (key, fn, side) => h('button', { class: 'menu-item', 'data-nav': key, onclick: fn }, h('span', null, t(key)), side);
     home.replaceChildren(
       h('div', null,
-        h('h1', { class: 'brand' }, 'Film Log'),
+        h('h1', { class: 'brand' }, 'Film_Log'),
         h('p', { class: 'brand-sub' }, S.rolls.length ? t('homeStats')(S.rolls.length, S.shots.length) : t('homeEmpty'))),
       h('div', null,
         h('nav', { class: 'menu' },
           item('create', () => openCreate()),
           item('active', openActive, h('span', { class: 'counter', 'aria-label': String(active) }, active)),
-          item('archive', () => openList('archive')),
+          item('archive', () => openList('archive'), h('span', { class: 'counter', 'aria-label': String(S.rolls.length - active) }, S.rolls.length - active)),
           item('export', () => openExport()),
           item('settings', openSettings)),
         standalone ? null : h('p', { class: 'install-hint' }, t('installHint'))));
@@ -387,12 +387,20 @@
     else openList('active');
   }
 
+  // Filmname und ISO sind getrennte Felder; angezeigt werden sie zusammen
+  function filmLabel(r) {
+    const f = (r.film || '').trim();
+    const iso = r.iso == null ? '' : String(r.iso);
+    if (!iso) return f;
+    if (new RegExp('(^|\\D)' + iso + '(\\D|$)').test(f)) return f;
+    return f ? f + ' ' + iso : 'ISO ' + iso;
+  }
   function rollRow(r, onTap, extra) {
-    const sub = [r.film, r.camera].filter(Boolean).join(', ');
+    const sub = [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.'].filter(Boolean).join(', ');
     return h('button', { class: 'row' + (extra || ''), 'data-roll': r.id, onclick: onTap },
       h('span', { class: 'row-title' }, r.title),
-      h('span', { class: 'row-side' }, extra ? null : frameCount(r.id) + '/' + r.frames),
-      h('span', { class: 'row-sub' }, sub || (extra ? frameCount(r.id) + '/' + r.frames : ' ')));
+      h('span', { class: 'row-side' }),
+      h('span', { class: 'row-sub' }, sub));
   }
 
   function openList(kind) {
@@ -434,20 +442,24 @@
 
     const info = h('p', { class: 'roll-info' });
     const list = h('div', { class: 'shots' });
-    // Stammdaten kompakt zeigen; ein Tipp öffnet die Felder zum Bearbeiten
+    // Stammdaten stehen als ruhige Unterzeile unter dem Titel; bearbeitet wird über das Menü
     const form = rollForm(d);
-    form.classList.add('compact');
-    const data = h('button', { class: 'roll-data', 'data-act': 'edit-data', 'aria-label': t('editData'), onclick: () => { form.classList.remove('compact'); data.remove(); } });
-    sheet.body.append(form, data, info, list);
+    form.hidden = true;
+    const heading = h('h2', { class: 'roll-title' });
+    const subline = h('p', { class: 'roll-sub' });
+    const startEdit = () => { form.hidden = false; heading.hidden = true; subline.hidden = true; sheet.body.scrollTop = 0; };
+    sheet.body.append(heading, subline, form, info, list);
 
     async function more() {
       const a = await ask(roll.title, [
+        { label: t('moreEdit'), value: 'edit' },
         { label: t('moreExport'), value: 'export' },
         roll.archived ? { label: t('moreReactivate'), value: 'reactivate' } : { label: t('moreArchive'), value: 'archive' },
         { label: t('moreDelete'), value: 'delete', kind: 'outline' },
         { label: t('cancel'), value: null, kind: 'ghost' }
       ]);
-      if (a === 'export') openExport(id);
+      if (a === 'edit') startEdit();
+      else if (a === 'export') openExport(id);
       else if (a === 'archive' || a === 'reactivate') {
         if (dirty()) Object.assign(roll, cleanRoll(d, roll.title));
         roll.archived = a === 'archive';
@@ -468,12 +480,8 @@
       if (!rollById(id)) { sheet.close(); return; }
       const shots = rollShots(id);
       sheet.setTitle(h('span', { class: 'counter', 'data-count': '' }, pad2(frameCount(id)) + ' / ' + roll.frames));
-      const pair = (label, value, cls) => h('span', { class: cls || null }, h('small', null, label), h('b', null, value == null || value === '' ? '–' : value));
-      data.replaceChildren(...[
-        pair(t('fFilm'), roll.film), pair(t('fCamera'), roll.camera), pair(t('fFrames'), roll.frames),
-        pair(t('fIso'), roll.iso), pair(t('fEi'), roll.ei), pair(t('fPush'), fmtPush(roll.push)),
-        roll.note ? pair(t('fNote'), roll.note, 'wide') : null,
-        h('span', { class: 'roll-data-edit' }, t('editData'))].filter(Boolean));
+      heading.textContent = roll.title;
+      subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.'].filter(Boolean).join(' / ');
       const since = activeSince(id);
       info.textContent = since != null ? t('activeSince', { d: fmtDate(since) }) : t('noShotsYet');
       list.replaceChildren(...shots.map(s => {
@@ -621,18 +629,27 @@
     function locate() {
       if (!navigator.geolocation) { geo.state = 'fail'; refreshStep(); return; }
       const token = ++geo.token;
-      geo.state = 'busy';
+      geo.state = 'busy'; geo.why = null;
       refreshStep();
-      navigator.geolocation.getCurrentPosition(p => {
+      let got = false, pending = 2;
+      const ok = p => {
         if (token !== geo.token || sheet.closed) return;
+        if (got && d.acc != null && p.coords.accuracy >= d.acc) return;
+        got = true;
         d.lat = p.coords.latitude; d.lon = p.coords.longitude; d.acc = p.coords.accuracy;
         geo.state = 'ok';
         refreshStep();
-      }, () => {
+      };
+      const fail = e => {
         if (token !== geo.token || sheet.closed) return;
+        if (e && e.code === 1) geo.why = 'denied';
+        if (--pending > 0 || got) return;
         geo.state = 'fail';
         refreshStep();
-      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+      };
+      // erst eine schnelle, grobe Ortung, parallel die genaue per GPS; die bessere gewinnt
+      navigator.geolocation.getCurrentPosition(ok, fail, { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 });
+      navigator.geolocation.getCurrentPosition(ok, fail, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
     }
     const refreshStep = () => { if (!sheet.closed && (STEPS[step] === 'loc' || STEPS[step] === 'done')) render(); };
 
@@ -737,6 +754,7 @@
         return h('div', { class: 'step-box' },
           h('div', { class: 'big-value' + (has ? '' : ' dim'), 'data-loc': '' }, busy ? t('locBusy') : has ? fmtCoord(d.lat, d.lon) : t(geo.state === 'fail' ? 'locFail' : 'locNone')),
           has && d.acc != null ? h('p', { class: 'hint' }, '± ' + Math.round(d.acc) + ' m') : null,
+          !busy && !has && geo.state === 'fail' && geo.why === 'denied' ? h('p', { class: 'hint', 'data-loc-denied': '' }, t('locDenied')) : null,
           h('button', { class: 'btn', disabled: busy, onclick: locate }, icon('pin'), t('locRetry')));
       }
       if (key === 'date') {

@@ -1,5 +1,5 @@
-/* Offline support: the app shell is cached on first load and refreshed in the background. */
-const CACHE = 'film-log-v1';
+/* Offline support: with a connection the newest files are loaded, otherwise the cached copy. */
+const CACHE = 'film-log-v2';
 const ASSETS = ['./', 'index.html', 'styles.css', 'i18n.js', 'export.js', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -20,10 +20,12 @@ self.addEventListener('fetch', e => {
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? await cache.match('./') : undefined);
-    const fresh = fetch(req).then(res => {
+    const fresh = (req.mode === 'navigate' ? fetch(req) : fetch(req.url, { cache: 'no-cache' })).then(res => {
       if (res && res.ok) cache.put(req, res.clone());
       return res;
-    }).catch(() => cached);
-    return cached || fresh;
+    });
+    if (!cached) return fresh;
+    const quick = await Promise.race([fresh.catch(() => null), new Promise(r => setTimeout(() => r(null), 2500))]);
+    return quick && quick.ok ? quick : cached;
   })());
 });

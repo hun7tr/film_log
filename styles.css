@@ -34,6 +34,7 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
 body {
   background: var(--bg); color: var(--text);
@@ -173,7 +174,8 @@ textarea.input { height: 132px; padding: 12px 14px; resize: none; line-height: 1
 .empty .btn { margin-top: 22px; }
 
 /* ---------- Rollenansicht ---------- */
-.form.compact .field:not(.title) { display: none; }
+.roll-title { font: 700 34px/1.15 var(--f-text); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.roll-sub { margin-top: 6px; font-size: 15px; color: var(--muted); }
 .roll-data {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; width: 100%;
   margin-top: 14px; padding: 14px 14px 10px; border-radius: var(--r-m); background: var(--card);
