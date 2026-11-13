@@ -207,7 +207,7 @@ textarea.input { height: 132px; padding: 12px 14px; resize: none; line-height: 1
 .shot-vals .nil { color: var(--muted); font-weight: 400; }
 .shot-vals span { white-space: nowrap; }
 .shot.sub .shot-vals { font-size: 16px; }
-.shot-meta span:first-child { flex: none; }
+.shot-meta span:not(:last-child) { flex: none; }
 .shot-meta { margin-top: 3px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 8px; align-items: center; }
 .shot-meta svg { width: 13px; height: 13px; flex: none; }
 .shot-meta span { overflow: hidden; text-overflow: ellipsis; }
@@ -284,6 +284,63 @@ input.date-input {
 .swatches { display: flex; }
 .swatches i { width: 26px; height: 26px; border-radius: 50%; margin-left: -6px; box-shadow: 0 0 0 2px var(--card); }
 .note { font-size: 14px; color: var(--muted); margin-bottom: 12px; line-height: 1.4; }
+
+/* ---------- Tags, Ordner, Filter ---------- */
+.sheet.mini { max-height: calc(100% - env(safe-area-inset-top) - 30px); overflow-y: auto; }
+.sheet.mini > * { flex: none; }
+.row-title.with-icon { display: flex; align-items: center; gap: 8px; }
+.row-title.with-icon svg { width: 20px; height: 20px; flex: none; }
+.row-title.with-icon span { overflow: hidden; text-overflow: ellipsis; }
+.tags { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.tag { font-style: normal; font-size: 12px; font-weight: 600; line-height: 1; color: #fff; padding: 5px 9px; border-radius: 999px; }
+.tags-block:not(:empty) { margin: 10px 0 2px; }
+.tags-block .tags { margin-top: 0; }
+.tag-row { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: center; gap: 6px; border-top: 1px solid var(--line); }
+.tag-row:first-child { border-top: 0; }
+.tag-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 58px; }
+.tag-toggle .tag { font-size: 14px; padding: 7px 12px; }
+.check { width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--line); }
+.tag-toggle.on .check { box-shadow: inset 0 0 0 8px var(--accent); }
+.dots { display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.dot { width: 36px; height: 36px; border-radius: 50%; }
+.dot.on { box-shadow: 0 0 0 3px var(--sheet), 0 0 0 5px var(--text); }
+.seg.tools { margin-bottom: 6px; }
+.seg.tools button { min-height: 50px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.seg.tools svg { width: 20px; height: 20px; }
+.seg a { min-height: 64px; padding: 8px 6px; border-radius: var(--r-m); background: var(--card); color: inherit; text-decoration: none; font-weight: 600; display: grid; place-items: center; text-align: center; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--card); font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.pill.on { background: var(--text); color: var(--sheet); }
+.pill-dot { width: 10px; height: 10px; border-radius: 50%; }
+.shots.plain { padding-left: 0; margin-top: 0; }
+.shots.plain::before { display: none; }
+
+/* ---------- Karte ---------- */
+.sheet-body.map-body { padding: 0; overflow: hidden; }
+.map { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--card); touch-action: none; }
+.map-tiles, .map-marks { position: absolute; inset: 0; }
+.map-marks { pointer-events: none; }
+.map-tile { position: absolute; left: 0; top: 0; width: 256px; height: 256px; max-width: none; pointer-events: none; }
+.map-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.map-line path { fill: none; stroke: #2B2622; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 7; }
+.map-pin {
+  position: absolute; left: -17px; top: -17px; min-width: 34px; height: 34px; padding: 0 6px; border-radius: 17px; pointer-events: auto;
+  background: var(--accent); color: var(--on-accent); font: 700 14px/34px var(--f-num); text-align: center;
+  box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0, 0, 0, .4);
+}
+.map-pin.on { background: #2B2622; color: #fff; z-index: 2; box-shadow: 0 0 0 4px #fff, 0 2px 8px rgba(0, 0, 0, .5); }
+.map-zoom { position: absolute; right: 12px; top: 12px; display: grid; gap: 8px; }
+.map-zoom button { width: 46px; height: 46px; border-radius: 12px; background: var(--sheet); font: 400 26px/1 var(--f-num); text-align: center; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
+.map-credit { position: absolute; right: 6px; bottom: 5px; padding: 1px 6px; border-radius: 4px; font-size: 11px; color: #333; background: rgba(255, 255, 255, .78); text-decoration: none; }
+.map-card { display: flex; gap: 12px; align-items: center; }
+.map-card b { display: block; }
+.map-card span { display: block; font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-card > div { min-width: 0; }
+
+/* ---------- Scans ---------- */
+.scan-list { margin-top: 12px; }
+.scan-row { display: grid; grid-template-columns: 46px minmax(0, 1fr) 92px; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.scan-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Meldung ---------- */
 #toast {

@@ -15,7 +15,7 @@
   const LAST = STEPS.length - 1;
   const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note'];
 
-  const S = { rolls: [], shots: [], settings: { theme: 'salbei', lang: 'de' } };
+  const S = { rolls: [], shots: [], folders: [], tags: [], settings: { theme: 'salbei', lang: 'de' } };
 
   // ------------------------------------------------------------ Helfer
   function h(tag, attrs, ...kids) {
@@ -45,7 +45,10 @@
     pin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 005 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
     play: '<path d="M7 5l12 7-12 7z" fill="currentColor"/>',
     stop: '<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>',
-    trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'
+    trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+    filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
+    map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>'
   };
   function icon(name) {
     const s = h('span', { class: 'ico', 'aria-hidden': 'true' });
@@ -96,12 +99,10 @@
     db: null,
     open() {
       return new Promise((res, rej) => {
-        const r = indexedDB.open('film-log', 1);
+        const r = indexedDB.open('film-log', 2);
         r.onupgradeneeded = () => {
           const d = r.result;
-          d.createObjectStore('rolls', { keyPath: 'id' });
-          d.createObjectStore('shots', { keyPath: 'id' });
-          d.createObjectStore('media', { keyPath: 'id' });
+          ['rolls', 'shots', 'media', 'folders', 'tags'].forEach(n => { if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, { keyPath: 'id' }); });
         };
         r.onsuccess = () => { DB.db = r.result; res(); };
         r.onerror = () => rej(r.error);
@@ -400,17 +401,61 @@
     return h('button', { class: 'row' + (extra || ''), 'data-roll': r.id, onclick: onTap },
       h('span', { class: 'row-title' }, r.title),
       h('span', { class: 'row-side' }),
-      h('span', { class: 'row-sub' }, sub));
+      h('span', { class: 'row-sub' }, sub),
+      tagChips(r.tags));
+  }
+
+  const folderById = id => S.folders.find(f => f.id === id);
+  const archivedRolls = () => S.rolls.filter(r => r.archived).sort((a, b) => b.createdAt - a.createdAt);
+  const shotsOf = rolls => rolls.flatMap(r => rollShots(r.id).reverse());
+  function folderRow(f, onTap) {
+    const n = S.rolls.filter(r => r.archived && r.folderId === f.id).length;
+    return h('button', { class: 'row', 'data-folder': f.name, onclick: onTap },
+      h('span', { class: 'row-title with-icon' }, icon('folder'), h('span', null, f.name)),
+      h('span', { class: 'row-side' }),
+      h('span', { class: 'row-sub' }, t('nRolls')(n)),
+      tagChips(f.tags));
+  }
+  function shotRow(s, withRoll) {
+    const val = (v, f) => h('span', { class: v == null ? 'nil' : null }, v == null ? '–' : f(v));
+    const roll = withRoll ? rollById(s.rollId) : null;
+    const meta = [
+      roll ? h('span', null, roll.title) : null,
+      s.date != null ? h('span', null, fmtDateTime(s.date)) : null,
+      s.lat != null ? icon('pin') : null,
+      s.audioId ? icon('mic') : null,
+      s.note ? h('span', null, s.note) : null
+    ];
+    return h('button', { class: 'shot' + (s.sub > 1 ? ' sub' : ''), 'data-shot': noLabel(s.no, s.sub), onclick: () => openShot(s.rollId, s.id) },
+      h('span', { class: 'shot-no' }, noLabel(s.no, s.sub)),
+      h('span', null,
+        h('span', { class: 'shot-vals' }, val(s.shutter, fmtShutter), val(s.aperture, fmtAperture), val(s.focal, fmtFocal)),
+        h('span', { class: 'shot-meta' }, meta)),
+      s.thumb ? h('img', { class: 'shot-thumb', src: s.thumb, alt: '' }) : h('span'));
   }
 
   function openList(kind) {
     const sheet = openSheet({ title: t(kind) });
     if (kind === 'active') sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('newRoll'), 'data-act': 'add', onclick: () => openCreate() }, icon('plus')));
+    else sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('newFolder'), 'data-act': 'add-folder', onclick: async () => { if (await createFolder()) refreshAll(); } }, icon('plus')));
     sheet.render = () => {
       sheet.setTitle(t(kind));
-      const rolls = S.rolls.filter(r => !!r.archived === (kind === 'archive')).sort((a, b) => b.createdAt - a.createdAt);
-      if (!rolls.length) sheet.body.replaceChildren(h('p', { class: 'empty' }, t(kind === 'active' ? 'emptyActive' : 'emptyArchive')));
-      else sheet.body.replaceChildren(...rolls.map(r => rollRow(r, () => openRoll(r.id))));
+      if (kind === 'active') {
+        const rolls = S.rolls.filter(r => !r.archived).sort((a, b) => b.createdAt - a.createdAt);
+        if (!rolls.length) sheet.body.replaceChildren(h('p', { class: 'empty' }, t('emptyActive')));
+        else sheet.body.replaceChildren(...rolls.map(r => rollRow(r, () => openRoll(r.id))));
+        return;
+      }
+      const rolls = archivedRolls();
+      const folders = S.folders.slice().sort((a, b) => a.name.localeCompare(b.name));
+      const kids = [];
+      if (rolls.length) kids.push(h('div', { class: 'seg tools' },
+        h('button', { 'data-act': 'filter', onclick: openFilter }, icon('filter'), t('filter')),
+        h('button', { 'data-act': 'map', onclick: () => openMap(t('archive'), shotsOf(rolls)) }, icon('map'), t('map'))));
+      folders.forEach(f => kids.push(folderRow(f, () => openFolder(f.id))));
+      rolls.filter(r => !r.folderId || !folderById(r.folderId)).forEach(r => kids.push(rollRow(r, () => openRoll(r.id))));
+      if (!rolls.length && !folders.length) kids.push(h('p', { class: 'empty' }, t('emptyArchive')));
+      sheet.body.replaceChildren(...kids);
     };
     sheet.render();
   }
@@ -448,17 +493,27 @@
     const heading = h('h2', { class: 'roll-title' });
     const subline = h('p', { class: 'roll-sub' });
     const startEdit = () => { form.hidden = false; heading.hidden = true; subline.hidden = true; sheet.body.scrollTop = 0; };
-    sheet.body.append(heading, subline, form, info, list);
+    const tagLine = h('div', { class: 'tags-block' });
+    sheet.body.append(heading, subline, tagLine, form, info, list);
 
     async function more() {
+      const mine = S.shots.filter(s => s.rollId === id);
       const a = await ask(roll.title, [
         { label: t('moreEdit'), value: 'edit' },
+        { label: t('tags'), value: 'tags' },
+        mine.length ? { label: t('scans'), value: 'scans' } : null,
+        mine.some(s => s.lat != null) ? { label: t('map'), value: 'map' } : null,
         { label: t('moreExport'), value: 'export' },
+        roll.archived ? { label: t('moreFolder'), value: 'folder' } : null,
         roll.archived ? { label: t('moreReactivate'), value: 'reactivate' } : { label: t('moreArchive'), value: 'archive' },
         { label: t('moreDelete'), value: 'delete', kind: 'outline' },
         { label: t('cancel'), value: null, kind: 'ghost' }
-      ]);
+      ].filter(Boolean));
       if (a === 'edit') startEdit();
+      else if (a === 'tags') openTags(roll, 'rolls');
+      else if (a === 'scans') openScans(id);
+      else if (a === 'map') openMap(roll.title, rollShots(id).reverse(), true);
+      else if (a === 'folder') { if (await moveToFolder(roll)) { refreshAll(); toast(t('saved')); } }
       else if (a === 'export') openExport(id);
       else if (a === 'archive' || a === 'reactivate') {
         if (dirty()) Object.assign(roll, cleanRoll(d, roll.title));
@@ -481,24 +536,11 @@
       const shots = rollShots(id);
       sheet.setTitle(h('span', { class: 'counter', 'data-count': '' }, pad2(frameCount(id)) + ' / ' + roll.frames));
       heading.textContent = roll.title;
+      tagLine.replaceChildren(...[tagChips(roll.tags)].filter(Boolean));
       subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.'].filter(Boolean).join(' / ');
       const since = activeSince(id);
       info.textContent = since != null ? t('activeSince', { d: fmtDate(since) }) : t('noShotsYet');
-      list.replaceChildren(...shots.map(s => {
-        const val = (v, f) => h('span', { class: v == null ? 'nil' : null }, v == null ? '–' : f(v));
-        const meta = [
-          s.date != null ? h('span', null, fmtDateTime(s.date)) : null,
-          s.lat != null ? icon('pin') : null,
-          s.audioId ? icon('mic') : null,
-          s.note ? h('span', null, s.note) : null
-        ];
-        return h('button', { class: 'shot' + (s.sub > 1 ? ' sub' : ''), 'data-shot': noLabel(s.no, s.sub), onclick: () => openShot(id, s.id) },
-          h('span', { class: 'shot-no' }, noLabel(s.no, s.sub)),
-          h('span', null,
-            h('span', { class: 'shot-vals' }, val(s.shutter, fmtShutter), val(s.aperture, fmtAperture), val(s.focal, fmtFocal)),
-            h('span', { class: 'shot-meta' }, meta)),
-          s.thumb ? h('img', { class: 'shot-thumb', src: s.thumb, alt: '' }) : h('span'));
-      }));
+      list.replaceChildren(...shots.map(s => shotRow(s)));
       sheet.foot.className = 'sheet-foot center';
       if (roll.archived) sheet.foot.replaceChildren();
       else if (!sheet.foot.firstChild) sheet.foot.append(h('button', { class: 'shutter', 'aria-label': t('newShot'), 'data-act': 'shutter', onclick: () => openShot(id, null) }));
@@ -632,10 +674,10 @@
       geo.state = 'busy'; geo.why = null;
       refreshStep();
       let got = false, pending = 2;
-      const ok = p => {
+      const ok = (p, precise) => {
         if (token !== geo.token || sheet.closed) return;
-        if (got && d.acc != null && p.coords.accuracy >= d.acc) return;
-        got = true;
+        if (got === 'precise' && !precise) return;
+        got = precise ? 'precise' : 'coarse';
         d.lat = p.coords.latitude; d.lon = p.coords.longitude; d.acc = p.coords.accuracy;
         geo.state = 'ok';
         refreshStep();
@@ -648,8 +690,9 @@
         refreshStep();
       };
       // erst eine schnelle, grobe Ortung, parallel die genaue per GPS; die bessere gewinnt
-      navigator.geolocation.getCurrentPosition(ok, fail, { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 });
-      navigator.geolocation.getCurrentPosition(ok, fail, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+      // immer frisch orten, damit nie der Standort des vorigen Shots übernommen wird
+      navigator.geolocation.getCurrentPosition(p => ok(p, false), fail, { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 });
+      navigator.geolocation.getCurrentPosition(p => ok(p, true), fail, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
     }
     const refreshStep = () => { if (!sheet.closed && (STEPS[step] === 'loc' || STEPS[step] === 'done')) render(); };
 
@@ -887,6 +930,380 @@
     if (isNew) locate();
   }
 
+  // ------------------------------------------------------------ Texteingabe als kleines Fenster
+  function askText(message, initial, placeholder) {
+    return new Promise(resolve => {
+      let done = false;
+      const finish = v => {
+        if (done) return;
+        done = true;
+        layer.classList.remove('open');
+        setTimeout(() => layer.remove(), 340);
+        resolve(v);
+      };
+      const input = h('input', { type: 'text', placeholder, value: initial || '', autocomplete: 'off', enterkeyhint: 'done', 'data-field': 'ask-text', onkeydown: e => { if (e.key === 'Enter') finish(input.value.trim() || null); } });
+      const el = h('section', { class: 'sheet mini', role: 'dialog', 'aria-modal': 'true' },
+        h('p', { class: 'mini-msg' }, message),
+        h('label', { class: 'field' }, input),
+        h('button', { class: 'btn primary', onclick: () => finish(input.value.trim() || null) }, t('save')),
+        h('button', { class: 'btn ghost', onclick: () => finish(null) }, t('cancel')));
+      const layer = h('div', { class: 'layer', style: 'z-index:40' }, h('div', { class: 'backdrop', onclick: () => finish(null) }), el);
+      layers.append(layer);
+      void layer.offsetHeight;
+      layer.classList.add('open');
+      setTimeout(() => input.focus(), 350);
+    });
+  }
+
+  // ------------------------------------------------------------ Tags
+  const TAG_COLORS = ['#B5533C', '#C98A2B', '#6E8B4E', '#3F8C8C', '#4E6FAE', '#8A5C9E', '#7A6A5A'];
+  function tagChips(ids) {
+    const list = (ids || []).map(id => S.tags.find(x => x.id === id)).filter(Boolean);
+    if (!list.length) return null;
+    return h('span', { class: 'tags' }, list.map(x => h('i', { class: 'tag', style: 'background:' + x.color }, x.name)));
+  }
+
+  function openTags(target, store) {
+    const sheet = openSheet({ title: t('tags') });
+    let color = TAG_COLORS[0];
+    const name = h('input', { type: 'text', placeholder: t('tagName'), 'data-field': 'tag-name', autocomplete: 'off', enterkeyhint: 'done' });
+    const save = async () => { await DB.put(store, target); refreshAll(); };
+    const has = id => (target.tags || []).includes(id);
+    async function removeTag(x) {
+      const ok = await ask(t('askDeleteTag', { t: x.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+      if (!ok) return;
+      for (const [st, list] of [['rolls', S.rolls], ['folders', S.folders]]) {
+        for (const o of list) if ((o.tags || []).includes(x.id)) { o.tags = o.tags.filter(i => i !== x.id); await DB.put(st, o); }
+      }
+      await DB.del('tags', x.id);
+      S.tags = S.tags.filter(y => y.id !== x.id);
+      refreshAll();
+    }
+    sheet.render = () => {
+      sheet.setTitle(t('tags'));
+      sheet.body.replaceChildren(
+        S.tags.length
+          ? h('div', null, S.tags.map(x => h('div', { class: 'tag-row' },
+            h('button', { class: 'tag-toggle' + (has(x.id) ? ' on' : ''), 'data-tag': x.name, onclick: async () => { target.tags = has(x.id) ? target.tags.filter(i => i !== x.id) : (target.tags || []).concat(x.id); await save(); } },
+              h('i', { class: 'tag', style: 'background:' + x.color }, x.name), h('span', { class: 'check' })),
+            h('button', { class: 'icon-btn', 'aria-label': t('delete'), onclick: () => removeTag(x) }, icon('trash')))))
+          : h('p', { class: 'note' }, t('noTags')),
+        h('p', { class: 'section-label' }, t('newTag')),
+        h('label', { class: 'field' }, name),
+        h('div', { class: 'dots' }, TAG_COLORS.map(c => h('button', { class: 'dot' + (c === color ? ' on' : ''), style: 'background:' + c, 'aria-label': c, onclick: () => { color = c; sheet.render(); } }))),
+        h('button', {
+          class: 'btn below', 'data-act': 'tag-add', onclick: async () => {
+            const n = name.value.trim();
+            if (!n) return;
+            const tag = { id: uid(), name: n, color };
+            await DB.put('tags', tag);
+            S.tags.push(tag);
+            target.tags = (target.tags || []).concat(tag.id);
+            name.value = '';
+            await save();
+          }
+        }, t('addTag')));
+    };
+    sheet.render();
+  }
+
+  // ------------------------------------------------------------ Ordner im Archiv
+  async function createFolder() {
+    const name = await askText(t('newFolder'), '', t('folderName'));
+    if (!name) return null;
+    const f = { id: uid(), name, tags: [], createdAt: Date.now() };
+    await DB.put('folders', f);
+    S.folders.push(f);
+    return f;
+  }
+
+  function openFolder(id) {
+    const sheet = openSheet({});
+    sheet.setRight(h('button', {
+      class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: async () => {
+        const f = folderById(id);
+        const a = await ask(f.name, [
+          { label: t('rename'), value: 'rename' },
+          { label: t('tags'), value: 'tags' },
+          { label: t('deleteFolder'), value: 'delete', kind: 'outline' },
+          { label: t('cancel'), value: null, kind: 'ghost' }
+        ]);
+        if (a === 'rename') {
+          const n = await askText(t('rename'), f.name, t('folderName'));
+          if (n) { f.name = n; await DB.put('folders', f); refreshAll(); }
+        } else if (a === 'tags') openTags(f, 'folders');
+        else if (a === 'delete') {
+          const ok = await ask(t('askDeleteFolder', { t: f.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+          if (!ok) return;
+          for (const r of S.rolls) if (r.folderId === id) { r.folderId = null; await DB.put('rolls', r); }
+          await DB.del('folders', id);
+          S.folders = S.folders.filter(x => x.id !== id);
+          sheet.close();
+          refreshAll();
+        }
+      }
+    }, icon('more')));
+    sheet.render = () => {
+      const f = folderById(id);
+      if (!f) { sheet.close(); return; }
+      sheet.setTitle(f.name);
+      const rolls = archivedRolls().filter(r => r.folderId === id);
+      const chips = tagChips(f.tags);
+      sheet.body.replaceChildren(...[
+        chips ? h('div', { class: 'tags-block' }, chips) : null,
+        ...(rolls.length ? rolls.map(r => rollRow(r, () => openRoll(r.id))) : [h('p', { class: 'empty' }, t('emptyFolder'))])
+      ].filter(Boolean));
+    };
+    sheet.render();
+  }
+
+  async function moveToFolder(roll) {
+    const folders = S.folders.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const a = await ask(t('moreFolder'), [
+      ...folders.map(f => ({ label: f.name, value: f.id, kind: roll.folderId === f.id ? 'primary' : '' })),
+      { label: t('newFolder'), value: '__new', kind: 'outline' },
+      roll.folderId && folderById(roll.folderId) ? { label: t('noFolder'), value: '__none' } : null,
+      { label: t('cancel'), value: null, kind: 'ghost' }
+    ].filter(Boolean));
+    if (!a) return false;
+    if (a === '__new') { const f = await createFolder(); if (!f) return false; roll.folderId = f.id; }
+    else roll.folderId = a === '__none' ? null : a;
+    await DB.put('rolls', roll);
+    return true;
+  }
+
+  // ------------------------------------------------------------ Filter im Archiv
+  function runFilter(c) {
+    const dateOn = c.years.size || c.from || c.to;
+    const inDate = s => {
+      if (!dateOn) return true;
+      if (s.date == null) return false;
+      if (c.years.size && !c.years.has(new Date(s.date).getFullYear())) return false;
+      const day = toLocalInput(s.date).slice(0, 10);
+      return !(c.from && day < c.from) && !(c.to && day > c.to);
+    };
+    const rollOk = r => {
+      const f = folderById(r.folderId);
+      const tg = (r.tags || []).concat(f ? f.tags || [] : []);
+      return (!c.tags.size || tg.some(x => c.tags.has(x))) && (!c.cams.size || c.cams.has(r.camera)) &&
+        (!c.films.size || c.films.has(filmLabel(r))) && (!c.isos.size || c.isos.has(r.iso));
+    };
+    const rolls = [], shots = [];
+    archivedRolls().filter(rollOk).forEach(r => {
+      const ss = rollShots(r.id).reverse().filter(inDate);
+      if (!dateOn || ss.length) rolls.push(r);
+      shots.push(...ss);
+    });
+    const onlyTags = c.tags.size && !c.cams.size && !c.films.size && !c.isos.size && !dateOn;
+    const folders = c.tags.size ? S.folders.filter(f => (f.tags || []).some(x => c.tags.has(x)) && (onlyTags || rolls.some(r => r.folderId === f.id))) : [];
+    return { folders, rolls, shots };
+  }
+
+  function openFilter() {
+    const c = { tags: new Set(), cams: new Set(), films: new Set(), isos: new Set(), years: new Set(), from: '', to: '' };
+    const sheet = openSheet({ title: t('filter') });
+    const go = h('button', { class: 'btn primary', 'data-act': 'filter-go', onclick: () => openResults(c) });
+    sheet.foot.append(go);
+    const upd = () => { const r = runFilter(c); go.textContent = t('showHits')(r.rolls.length, r.shots.length); };
+    const fromIn = h('input', { type: 'date', 'aria-label': t('from'), 'data-field': 'from', oninput: e => { c.from = e.target.value; upd(); } });
+    const toIn = h('input', { type: 'date', 'aria-label': t('to'), 'data-field': 'to', oninput: e => { c.to = e.target.value; upd(); } });
+    sheet.render = () => {
+      sheet.setTitle(t('filter'));
+      const rolls = archivedRolls();
+      const uniq = arr => [...new Set(arr.filter(v => v != null && v !== ''))];
+      const group = (label, set, values, fmt, colorOf) => values.length ? [
+        h('p', { class: 'section-label' }, label),
+        h('div', { class: 'pills' }, values.map(v => h('button', { class: 'pill' + (set.has(v) ? ' on' : ''), 'data-pill': fmt ? fmt(v) : v, onclick: () => { if (set.has(v)) set.delete(v); else set.add(v); sheet.render(); } },
+          colorOf ? h('i', { class: 'pill-dot', style: 'background:' + colorOf(v) }) : null, fmt ? fmt(v) : v)))
+      ] : [];
+      const tagOf = id => S.tags.find(x => x.id === id) || {};
+      const top = sheet.body.scrollTop;
+      sheet.body.replaceChildren(
+        ...group(t('tags'), c.tags, S.tags.map(x => x.id), id => tagOf(id).name, id => tagOf(id).color),
+        ...group(t('fCamera'), c.cams, uniq(rolls.map(r => r.camera)).sort()),
+        ...group(t('fFilm'), c.films, uniq(rolls.map(filmLabel)).sort()),
+        ...group(t('fIso'), c.isos, uniq(rolls.map(r => r.iso)).sort((a, b) => a - b)),
+        ...group(t('year'), c.years, uniq(shotsOf(rolls).filter(s => s.date != null).map(s => new Date(s.date).getFullYear())).sort()),
+        h('p', { class: 'section-label' }, t('period')),
+        h('div', { class: 'form' },
+          h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('from')), fromIn),
+          h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('to')), toIn)));
+      sheet.body.scrollTop = top;
+      upd();
+    };
+    sheet.render();
+  }
+
+  function openResults(c) {
+    const sheet = openSheet({ title: t('results') });
+    sheet.render = () => {
+      sheet.setTitle(t('results'));
+      const r = runFilter(c);
+      const kids = [];
+      if (!r.folders.length && !r.rolls.length && !r.shots.length) kids.push(h('p', { class: 'empty' }, t('noHits')));
+      if (r.shots.some(s => s.lat != null)) kids.push(h('button', { class: 'btn', 'data-act': 'results-map', onclick: () => openMap(t('results'), r.shots) }, icon('map'), t('showOnMap')));
+      const section = (key, n) => h('p', { class: 'section-label' }, t(key) + ' (' + n + ')');
+      if (r.folders.length) { kids.push(section('folders', r.folders.length)); r.folders.forEach(f => kids.push(folderRow(f, () => openFolder(f.id)))); }
+      if (r.rolls.length) { kids.push(section('rolls', r.rolls.length)); r.rolls.forEach(x => kids.push(rollRow(x, () => openRoll(x.id)))); }
+      if (r.shots.length) { kids.push(section('photos', r.shots.length)); kids.push(h('div', { class: 'shots plain' }, r.shots.slice(0, 300).map(s => shotRow(s, true)))); }
+      sheet.body.replaceChildren(...kids);
+    };
+    sheet.render();
+  }
+
+  // ------------------------------------------------------------ Karte
+  function openMap(title, shots, line) {
+    const pts = shots.filter(s => s.lat != null && s.lon != null);
+    const sheet = openSheet({ title });
+    if (!pts.length) { sheet.body.append(h('p', { class: 'empty' }, t('noLocations'))); return; }
+    sheet.body.classList.add('map-body');
+    const box = h('div', { class: 'map' });
+    sheet.body.append(box);
+    const show = s => {
+      const roll = rollById(s.rollId) || { title: '' };
+      const label = roll.title + ', ' + t('shot') + ' ' + noLabel(s.no, s.sub);
+      const vals = [s.shutter == null ? null : fmtShutterUnit(s.shutter), s.aperture == null ? null : fmtAperture(s.aperture), s.focal == null ? null : fmtFocal(s.focal)].filter(Boolean).join('   ');
+      sheet.foot.className = 'sheet-foot';
+      sheet.foot.replaceChildren(
+        h('div', { class: 'map-card', 'data-map-card': '' },
+          s.thumb ? h('img', { class: 'shot-thumb', src: s.thumb, alt: '' }) : null,
+          h('div', null, h('b', null, label), h('span', null, [vals, s.date != null ? fmtDateTime(s.date) : null].filter(Boolean).join(', ')), s.note ? h('span', null, s.note) : null)),
+        h('div', { class: 'seg' },
+          h('button', { onclick: () => openShot(s.rollId, s.id) }, t('openShot')),
+          h('a', { href: 'https://maps.apple.com/?ll=' + s.lat + ',' + s.lon + '&q=' + encodeURIComponent(label), target: '_blank', rel: 'noopener' }, t('appleMaps'))));
+    };
+    window.FilmMap.create(box, pts.map(s => ({ lat: s.lat, lon: s.lon, label: noLabel(s.no, s.sub), data: s })), { line, onSelect: p => show(p.data) });
+    if (navigator.onLine === false) toast(t('mapOffline'));
+  }
+
+  // ------------------------------------------------------------ Scans zuordnen
+  const IMG_RE = /\.(jpe?g|png|tiff?|webp|heic)$/i;
+  function exifMeta(roll, s) {
+    const sh = s.shutter;
+    const exposure = sh == null || sh === 'B' ? null : /s$/.test(sh) ? [parseInt(sh, 10), 1] : sh.split('/').map(Number);
+    return {
+      description: s.note || '', model: roll.camera || '', date: s.date, exposure,
+      fnumber: s.aperture == null ? null : Number(s.aperture), iso: roll.ei || roll.iso || null, focal: s.focal, lat: s.lat, lon: s.lon,
+      comment: [filmLabel(roll) ? 'Film: ' + filmLabel(roll) : '', roll.push ? 'Push/Pull ' + (roll.push > 0 ? '+' : '') + roll.push : '', 'Shot ' + noLabel(s.no, s.sub)].filter(Boolean).join(', ')
+    };
+  }
+
+  function openScans(rollId) {
+    const roll = rollById(rollId);
+    if (!roll) return;
+    const frames = [...new Set(S.shots.filter(s => s.rollId === rollId).map(s => s.no))].sort((a, b) => a - b);
+    const shotFor = no => S.shots.filter(s => s.rollId === rollId && s.no === no).sort((a, b) => a.sub - b.sub)[0];
+    let items = null, busy = false, progress = '';
+    const sheet = openSheet({ title: t('scans') });
+    const go = h('button', { class: 'btn primary', 'data-act': 'scan-run', onclick: run });
+    const zipIn = h('input', { type: 'file', accept: '.zip,application/zip,application/x-zip-compressed', hidden: true, 'data-in': 'scan-zip', onchange: e => load(e, true) });
+    const imgIn = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, 'data-in': 'scan-files', onchange: e => load(e, false) });
+    const assign = () => items.forEach((it, i) => { it.no = i < frames.length ? frames[i] : null; });
+
+    async function load(e, isZip) {
+      const files = [...(e.target.files || [])];
+      e.target.value = '';
+      if (!files.length) return;
+      try {
+        let list;
+        if (isZip) {
+          const zip = await window.JSZip.loadAsync(files[0]);
+          list = Object.values(zip.files).filter(f => !f.dir && IMG_RE.test(f.name) && !/(^|\/)(\._|__MACOSX\/)/.test(f.name))
+            .map(f => ({ name: f.name.split('/').pop(), path: f.name, read: () => f.async('uint8array') }));
+        } else {
+          list = files.filter(f => IMG_RE.test(f.name)).map(f => ({ name: f.name, path: f.name, read: async () => new Uint8Array(await f.arrayBuffer()) }));
+        }
+        if (!list.length) { toast(t('scanNone')); return; }
+        list.sort((a, b) => window.FilmScan.natural(a.path, b.path));
+        items = list;
+        assign();
+        sheet.render();
+        thumbs();
+      } catch (err) { toast(t('scanFail')); }
+    }
+
+    // Vorschaubilder nacheinander erzeugen, damit der Speicher nicht vollläuft
+    async function thumbs() {
+      const mine = items;
+      for (;;) {
+        if (sheet.closed || items !== mine || busy) return;
+        const it = mine.find(x => !x.tried);
+        if (!it) return;
+        it.tried = true;
+        if (!/\.(jpe?g|png|webp)$/i.test(it.name)) continue;
+        try {
+          const img = await loadImage(new Blob([await it.read()]));
+          it.thumb = drawScaled(img, 120).toDataURL('image/jpeg', 0.6);
+          if (it.imgEl) it.imgEl.src = it.thumb;
+        } catch (e) {}
+      }
+    }
+
+    async function run() {
+      if (busy || !items) return;
+      busy = true;
+      try {
+        const out = new window.JSZip(), used = new Set(), base = slug(roll.title);
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          progress = (i + 1) + '/' + items.length;
+          go.textContent = t('scanBusy') + ' ' + progress;
+          go.disabled = true;
+          let bytes = await it.read(), name = it.name;
+          if (it.no != null) {
+            const ext = (it.name.match(/\.[^.]+$/) || ['.jpg'])[0].toLowerCase();
+            name = base + '_' + pad2(it.no) + ext;
+            if (window.FilmScan.isJpeg(bytes)) { try { bytes = window.FilmScan.writeExif(bytes, exifMeta(roll, shotFor(it.no))); } catch (e) {} }
+          }
+          let n = name, k = 2;
+          while (used.has(n.toLowerCase())) n = name.replace(/(\.[^.]+)$/, '_' + (k++) + '$1');
+          used.add(n.toLowerCase());
+          out.file(n, bytes, { binary: true });
+        }
+        const blob = await out.generateAsync({ type: 'blob', compression: 'STORE' });
+        const file = new File([blob], base + '-scans.zip', { type: 'application/zip' });
+        busy = false;
+        sheet.render();
+        await offerFile(t('scanReady'), file);
+      } catch (e) {
+        busy = false;
+        sheet.render();
+        toast(t('scanFail'));
+      }
+    }
+
+    sheet.render = () => {
+      sheet.setTitle(t('scans'));
+      if (!items) {
+        sheet.foot.replaceChildren();
+        sheet.body.replaceChildren(
+          h('p', { class: 'note' }, t('scanIntro')),
+          h('div', { class: 'btn-stack' },
+            h('button', { class: 'btn', onclick: () => zipIn.click() }, t('scanZip')),
+            h('button', { class: 'btn', onclick: () => imgIn.click() }, icon('image'), t('scanFiles'))),
+          zipIn, imgIn);
+        return;
+      }
+      const mapped = items.filter(it => it.no != null).length;
+      sheet.body.replaceChildren(
+        h('p', { class: 'note', 'data-scan-info': '' }, t('scanInfo')(items.length, frames.length, mapped)),
+        h('button', { class: 'btn', 'data-act': 'scan-reverse', onclick: () => { items.reverse(); assign(); sheet.render(); } }, t('scanReverse')),
+        h('div', { class: 'scan-list' }, items.map(it => {
+          const sel = h('select', { 'aria-label': t('shot'), onchange: e => { it.no = e.target.value === '' ? null : Number(e.target.value); sheet.render(); } },
+            h('option', { value: '' }, '–'), frames.map(n => h('option', { value: n }, pad2(n))));
+          sel.value = it.no == null ? '' : String(it.no);
+          it.imgEl = h('img', { class: 'shot-thumb', alt: '', src: it.thumb || null });
+          return h('div', { class: 'scan-row', 'data-scan': it.name }, it.imgEl, h('span', { class: 'scan-name' }, it.name), h('label', { class: 'field' }, sel));
+        })),
+        zipIn, imgIn);
+      sheet.foot.className = 'sheet-foot';
+      if (!sheet.foot.firstChild) sheet.foot.append(go);
+      go.textContent = busy ? t('scanBusy') + ' ' + progress : t('scanRun');
+      go.disabled = busy || !mapped;
+    };
+    sheet.render();
+  }
+
   // ------------------------------------------------------------ Export
   function shareFile(file) {
     try {
@@ -1062,7 +1479,7 @@
   async function makeBackup() {
     const media = await DB.all('media');
     const data = {
-      app: 'film-log', version: 1, exportedAt: new Date().toISOString(), settings: S.settings, rolls: S.rolls, shots: S.shots,
+      app: 'film-log', version: 1, exportedAt: new Date().toISOString(), settings: S.settings, rolls: S.rolls, shots: S.shots, folders: S.folders, tags: S.tags,
       media: media.map(m => ({ id: m.id, type: m.type, w: m.w, h: m.h, data: toB64(m.buf) }))
     };
     const d = new Date();
@@ -1079,14 +1496,17 @@
     ], file.name);
     if (!ok) return;
     const media = (data.media || []).map(m => ({ id: m.id, type: m.type, w: m.w, h: m.h, buf: fromB64(m.data) }));
-    await DB.run(['rolls', 'shots', 'media'], 'readwrite', tx => {
+    await DB.run(['rolls', 'shots', 'media', 'folders', 'tags'], 'readwrite', tx => {
       const put = (name, list) => { const st = tx.objectStore(name); st.clear(); list.forEach(x => st.put(x)); };
       put('rolls', data.rolls); put('shots', data.shots); put('media', media);
+      put('folders', data.folders || []); put('tags', data.tags || []);
     });
     urls.forEach(u => URL.revokeObjectURL(u));
     urls.clear();
     S.rolls = data.rolls;
     S.shots = data.shots;
+    S.folders = data.folders || [];
+    S.tags = data.tags || [];
     if (data.settings) {
       if (THEMES[data.settings.theme]) S.settings.theme = data.settings.theme;
       if (window.I18N[data.settings.lang]) S.settings.lang = data.settings.lang;
@@ -1134,6 +1554,8 @@
       await DB.open();
       S.rolls = await DB.all('rolls');
       S.shots = await DB.all('shots');
+      S.folders = await DB.all('folders');
+      S.tags = await DB.all('tags');
     } catch (e) { toast(t('dbError')); }
     renderHome();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
