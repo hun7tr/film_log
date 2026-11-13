@@ -3,20 +3,19 @@
 
   // ------------------------------------------------------------ Konstanten
   const THEMES = {
-    salbei: { bar: '#EEEDE9', colors: ['#EEEDE9', '#C8C6AD', '#98503F', '#A2B08F', '#D9B2A9'], pdf: [152, 80, 63] },
-    nacht: { bar: '#000000', colors: ['#000000', '#2A0048', '#560072', '#800080', '#D50048'], pdf: [213, 0, 72] },
-    nebel: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] }
+    hell: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] },
+    dunkel: { bar: '#161617', colors: ['#161617', '#2A2A2D', '#3D3D42', '#9C9BA1', '#FF7A3D'], pdf: [224, 98, 40] }
   };
-  const VERSION = '0.8';
+  const VERSION = '0.9';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
   const DEFAULTS = { shutter: '1/125', aperture: '8', focal: 50, flash: false };
   const STEPS = ['no', 'shutter', 'aperture', 'focal', 'loc', 'date', 'notes', 'ref', 'done'];
   const LAST = STEPS.length - 1;
-  const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note', 'pns'];
+  const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note', 'pns', 'simple'];
 
-  const S = { rolls: [], shots: [], folders: [], tags: [], settings: { theme: 'salbei', lang: 'de' } };
+  const S = { rolls: [], shots: [], folders: [], tags: [], settings: { theme: 'hell', lang: 'de' } };
 
   // ------------------------------------------------------------ Helfer
   function h(tag, attrs, ...kids) {
@@ -50,7 +49,14 @@
     folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
     filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
     map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
-    bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>'
+    bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    chev: '<path d="M9 6l6 6-6 6"/>',
+    tabActive: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/>',
+    tabArchive: '<path d="M3 5h18v4H3zM5 9v10h14V9M10 13h4"/>',
+    tabExport: '<path d="M12 3v12M8 7l4-4 4 4M5 13v7h14v-7"/>',
+    tabSettings: '<path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.5"/><circle cx="8" cy="17" r="2.5"/>'
   };
   function icon(name) {
     const s = h('span', { class: 'ico', 'aria-hidden': 'true' });
@@ -175,7 +181,7 @@
     const right = h('div', { class: 'sheet-right' });
     const head = h('header', { class: 'sheet-head' },
       h('div', { class: 'grab' }),
-      h('button', { class: 'icon-btn', 'aria-label': t('close'), onclick: () => sheet.requestClose() }, icon('down')),
+      h('button', { class: 'icon-btn', 'aria-label': t('close'), onclick: () => sheet.requestClose() }, icon('close')),
       title, right);
     const body = h('div', { class: 'sheet-body' });
     const foot = h('footer', { class: 'sheet-foot' });
@@ -274,74 +280,86 @@
     stack.slice().forEach(s => { if (s.render && !s.closed) s.render(); });
   }
 
-  // ------------------------------------------------------------ Hauptmenü
+  // ------------------------------------------------------------ Seiten mit Tab-Leiste (statt Hauptmenü)
   const home = document.getElementById('home');
-  function renderHome() {
-    const active = S.rolls.filter(r => !r.archived).length;
-    const standalone = navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-    const item = (key, fn, side) => h('button', { class: 'menu-item', 'data-nav': key, onclick: fn }, h('span', null, t(key)), side);
-    home.replaceChildren(
-      h('div', null,
-        h('h1', { class: 'brand' }, 'Film_Log'),
-        h('p', { class: 'brand-version' }, 'Alpha ' + VERSION),
-        h('p', { class: 'brand-sub' }, S.rolls.length ? t('homeStats')(S.rolls.length, S.shots.length) : t('homeEmpty'))),
-      h('div', null,
-        h('nav', { class: 'menu' },
-          item('create', () => openCreate()),
-          item('active', openActive, active ? h('span', { class: 'menu-count' }, active) : null),
-          item('archive', () => openList('archive'), S.rolls.length - active ? h('span', { class: 'menu-count' }, S.rolls.length - active) : null),
-          item('export', () => openExport()),
-          item('settings', openSettings)),
-        standalone ? null : h('p', { class: 'install-hint' }, t('installHint'))));
+  const TABS = [['active', 'tabActive'], ['archive', 'tabArchive'], ['export', 'tabExport'], ['settings', 'tabSettings']];
+  let page = null, tabName = 'active';
+  const tabbar = h('nav', { class: 'tabbar' });
+
+  function renderTabbar() {
+    tabbar.replaceChildren(...TABS.map(([key, ic]) => h('button', { class: 'tab' + (tabName === key ? ' on' : ''), 'data-nav': key, 'aria-current': tabName === key ? 'page' : null, onclick: () => showTab(key) }, icon(ic), h('span', null, t(key)))));
   }
 
-  // ------------------------------------------------------------ Formular einer Rolle
+  // Eine Seite bietet dieselben Anschlüsse wie ein Fenster, damit Listen, Export und Einstellungen beides bedienen können
+  function showTab(name) {
+    tabName = name;
+    const title = h('h1', { class: 'page-title' });
+    const left = h('div', { class: 'page-side' }), right = h('div', { class: 'page-side' });
+    const body = h('div', { class: 'page-body' });
+    const foot = h('footer', { class: 'page-foot' });
+    page = {
+      closed: false, isPage: true, body, foot, render: null,
+      setTitle: v => { title.textContent = v == null ? '' : v; },
+      setLeft: v => left.replaceChildren(...(v ? [v] : [])),
+      setRight: v => right.replaceChildren(...(v ? [v] : [])),
+      close: () => {}
+    };
+    home.replaceChildren(h('header', { class: 'page-head' }, left, right), title, body, foot, tabbar);
+    renderTabbar();
+    if (name === 'active' || name === 'archive') openList(name, page);
+    else if (name === 'export') openExport(null, page);
+    else openSettings(page);
+  }
+
+  function renderHome() {
+    if (!page) { showTab(tabName); return; }
+    renderTabbar();
+    if (page.render) page.render();
+  }
+
+  // ------------------------------------------------------------ Einstellungszeilen wie in der Uhr-App
+  const group = (...kids) => h('div', { class: 'group' }, kids);
+  const line = (label, control, attrs) => h('label', Object.assign({ class: 'line' }, attrs || {}), h('span', { class: 'line-label' }, label), control);
+  const lineBtn = (label, value, onTap, attrs) => h('button', Object.assign({ class: 'line', onclick: onTap }, attrs || {}),
+    h('span', { class: 'line-label' }, label), value == null ? null : (value.nodeType ? value : h('span', { class: 'line-value' }, value)), icon('chev'));
+  const lineSwitch = (label, on, onChange, field) => line(label, h('input', { type: 'checkbox', class: 'switch', role: 'switch', 'data-field': field, checked: on ? true : null, onchange: e => onChange(e.target.checked) }));
+
+  // ------------------------------------------------------------ Rolle anlegen und bearbeiten
   function rollForm(d) {
-    const input = (key, label, o) => h('label', { class: 'field' + (o.cls ? ' ' + o.cls : '') },
-      h('span', { class: 'field-label' }, label),
-      h('input', {
-        type: 'text', class: o.num ? 'numeric' : null, inputmode: o.num ? 'numeric' : null, placeholder: o.ph, autocomplete: 'off',
-        autocapitalize: o.num ? 'off' : 'sentences', 'data-field': key, enterkeyhint: 'done',
-        value: d[key] == null ? '' : d[key],
-        oninput: e => {
-          const v = e.target.value;
-          if (o.num) { const n = parseInt(v.replace(/\D/g, ''), 10); d[key] = isNaN(n) ? null : n; }
-          else d[key] = v;
-        },
-        onkeydown: e => { if (e.key === 'Enter') e.target.blur(); }
-      }));
+    const input = (key, label, o) => line(label, h('input', {
+      type: 'text', inputmode: o.num ? 'numeric' : null, placeholder: o.ph || '', autocomplete: 'off',
+      autocapitalize: o.num ? 'off' : 'sentences', 'data-field': key, enterkeyhint: 'done',
+      value: d[key] == null ? '' : d[key],
+      oninput: e => {
+        const v = e.target.value;
+        if (o.num) { const n = parseInt(v.replace(/\D/g, ''), 10); d[key] = isNaN(n) ? null : n; }
+        else d[key] = v;
+      },
+      onkeydown: e => { if (e.key === 'Enter') e.target.blur(); }
+    }));
 
     const push = h('select', { 'data-field': 'push', onchange: e => { d.push = Number(e.target.value); } },
       [-2, -1, 0, 1, 2, 3].map(n => h('option', { value: n }, fmtPush(n))));
     push.value = String(d.push || 0);
 
     const PRESETS = [12, 24, 36];
-    const chips = PRESETS.map(n => h('button', { type: 'button', class: 'chip', 'data-frames': n, onclick: () => { d.frames = n; other.value = ''; mark(); } }, n));
-    const other = h('input', {
-      type: 'text', inputmode: 'numeric', placeholder: t('fFramesOther'), 'aria-label': t('fFramesOther'), 'data-field': 'frames',
-      value: PRESETS.includes(d.frames) || d.frames == null ? '' : d.frames,
-      oninput: e => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10); if (n > 0) { d.frames = n; mark(); } },
+    const other = line(t('fFramesOther'), h('input', {
+      type: 'text', inputmode: 'numeric', 'data-field': 'frames', enterkeyhint: 'done', value: PRESETS.includes(d.frames) ? '' : d.frames,
+      oninput: e => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10); if (n > 0) d.frames = n; },
       onkeydown: e => { if (e.key === 'Enter') e.target.blur(); }
-    });
-    const mark = () => {
-      chips.forEach((c, i) => c.classList.toggle('on', d.frames === PRESETS[i] && other.value === ''));
-      other.classList.toggle('on', other.value !== '');
-    };
-    mark();
+    }));
+    other.hidden = PRESETS.includes(d.frames);
+    const frames = h('select', { 'data-field': 'frames-preset', onchange: e => {
+      if (e.target.value === 'other') { other.hidden = false; other.querySelector('input').focus(); }
+      else { other.hidden = true; d.frames = Number(e.target.value); }
+    } }, PRESETS.map(n => h('option', { value: n }, n)), h('option', { value: 'other' }, t('fFramesOther')));
+    frames.value = PRESETS.includes(d.frames) ? String(d.frames) : 'other';
 
-    return h('div', { class: 'form' },
-      input('title', t('fTitle'), { cls: 'wide title' }),
-      input('film', t('fFilm'), { ph: t('fFilmPh') }),
-      input('camera', t('fCamera'), { ph: t('fCameraPh') }),
-      input('iso', t('fIso'), { num: true }),
-      input('ei', t('fEi'), { num: true }),
-      h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('fPush')), push),
-      h('div', { class: 'field' }),
-      h('div', { class: 'field wide' }, h('span', { class: 'field-label' }, t('fFrames')), h('div', { class: 'chips' }, chips, other)),
-      h('label', { class: 'field wide switch-row' },
-        h('span', null, h('b', null, t('pns')), h('small', null, t('pnsHint'))),
-        h('input', { type: 'checkbox', class: 'switch', role: 'switch', 'data-field': 'pns', checked: d.pns ? true : null, onchange: e => { d.pns = e.target.checked; } })),
-      input('note', t('fNote'), { cls: 'wide' }));
+    return h('div', null,
+      group(input('title', t('fTitle'), {}), input('film', t('fFilm'), { ph: t('fFilmPh') }), input('camera', t('fCamera'), { ph: t('fCameraPh') })),
+      group(input('iso', t('fIso'), { num: true }), input('ei', t('fEi'), { num: true }), line(t('fPush'), push), line(t('fFrames'), frames), other),
+      group(lineSwitch(t('pns'), d.pns, v => { d.pns = v; }, 'pns'), lineSwitch(t('simple'), d.simple, v => { d.simple = v; }, 'simple')),
+      group(input('note', t('fNote'), {})));
   }
   function cleanRoll(d, fallbackTitle) {
     const o = pickRoll(d);
@@ -349,24 +367,28 @@
     o.film = (o.film || '').trim(); o.camera = (o.camera || '').trim(); o.note = (o.note || '').trim();
     o.push = o.push || 0;
     o.pns = !!o.pns;
+    o.simple = !!o.simple;
     o.frames = o.frames > 0 ? o.frames : 36;
     return o;
   }
 
-  // ------------------------------------------------------------ Erstellen
-  function openCreate() {
-    const fallback = nextTitle();
-    const d = { title: fallback, film: '', iso: null, ei: null, push: 0, camera: '', frames: 36, note: '', pns: false };
+  // Ein Fenster für neue und bestehende Rollen: oben links schließen, oben rechts sichern
+  function openRollEdit(id) {
+    const roll = id ? rollById(id) : null;
+    const fallback = roll ? roll.title : nextTitle();
+    const d = roll ? pickRoll(roll) : { title: fallback, film: '', iso: null, ei: null, push: 0, camera: '', frames: 36, note: '', pns: false, simple: false };
+    d.pns = !!d.pns; d.simple = !!d.simple;
     const orig = JSON.stringify(d);
     let saving = false;
     const save = async () => {
-      const roll = Object.assign({ id: uid(), createdAt: Date.now(), archived: false, askedFull: false }, cleanRoll(d, fallback));
-      await DB.put('rolls', roll);
-      S.rolls.push(roll);
-      return roll;
+      if (roll) { Object.assign(roll, cleanRoll(d, fallback)); await DB.put('rolls', roll); return roll; }
+      const r = Object.assign({ id: uid(), createdAt: Date.now(), archived: false, askedFull: false }, cleanRoll(d, fallback));
+      await DB.put('rolls', r);
+      S.rolls.push(r);
+      return r;
     };
     const sheet = openSheet({
-      title: t('newRoll'),
+      title: t(roll ? 'moreEdit' : 'newRoll'),
       beforeClose: async () => {
         if (saving || JSON.stringify(d) === orig) return true;
         const a = await askSave(t('askSave'));
@@ -374,29 +396,35 @@
         return a === 'discard';
       }
     });
-    sheet.body.append(rollForm(d));
-    sheet.foot.append(h('button', {
-      class: 'btn primary', 'data-act': 'finish', onclick: async () => {
+    sheet.setRight(h('button', {
+      class: 'icon-btn ok', 'data-act': 'finish', 'aria-label': t('save'), onclick: async () => {
         haptic();
         if (saving) return;
         saving = true;
         try {
-          const roll = await save();
+          const r = await save();
           sheet.close();
           refreshAll();
-          openRoll(roll.id);
+          if (!roll) openRoll(r.id);
         } catch (e) { saving = false; toast(t('saveFail')); }
       }
-    }, t('finish')));
+    }, icon('check')));
+    sheet.body.append(rollForm(d));
+    if (roll) sheet.body.append(group(h('button', {
+      class: 'line danger', 'data-act': 'roll-delete', onclick: async () => {
+        const ok = await ask(t('askDeleteRoll', { t: roll.title }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+        if (!ok) return;
+        saving = true;
+        await deleteRoll(roll.id);
+        sheet.close();
+        stack.slice().forEach(s => { if (s.rollId === roll.id) s.close(); });
+        refreshAll();
+        toast(t('deleted'));
+      }
+    }, t('moreDelete'))));
   }
 
   // ------------------------------------------------------------ Aktiv und Archiv
-  function openActive() {
-    const act = S.rolls.filter(r => !r.archived);
-    if (act.length === 1) openRoll(act[0].id);
-    else openList('active');
-  }
-
   // Filmname und ISO sind getrennte Felder; angezeigt werden sie zusammen
   function filmLabel(r) {
     const f = (r.film || '').trim();
@@ -406,7 +434,7 @@
     return f ? f + ' ' + iso : 'ISO ' + iso;
   }
   function rollRow(r, onTap, extra) {
-    const sub = [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.', r.pns ? 'P&S' : ''].filter(Boolean).join(', ');
+    const sub = [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.', r.pns ? 'P&S' : '', r.simple ? 'Simple' : ''].filter(Boolean).join(', ');
     return h('button', { class: 'row' + (extra || ''), 'data-roll': r.id, onclick: onTap },
       h('span', { class: 'row-title' }, r.title),
       h('span', { class: 'row-side' }),
@@ -446,13 +474,67 @@
       s.thumb ? h('img', { class: 'shot-thumb', src: s.thumb, alt: '' }) : h('span'));
   }
 
-  function openList(kind) {
-    const sheet = openSheet({ title: t(kind) });
-    if (kind === 'active') sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('newRoll'), 'data-act': 'add', onclick: () => openCreate() }, icon('plus')));
-    else sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('newFolder'), 'data-act': 'add-folder', onclick: async () => {
+  // Zeile, die sich nach links wischen lässt und dann einen runden Papierkorb freigibt
+  function swipeRow(row, key, onDelete) {
+    row.classList.add('row-main');
+    return h('div', { class: 'srow', 'data-drag': key },
+      h('button', { class: 'row-trash', 'aria-label': t('delete'), 'data-act': 'trash', onclick: e => { e.stopPropagation(); onDelete(); } }, icon('trash')), row);
+  }
+  function swipeable(box) {
+    const W = 84;
+    let sw = null;
+    const closeAll = except => box.querySelectorAll('.srow.open').forEach(e => { if (e !== except) e.classList.remove('open'); });
+    box.addEventListener('pointerdown', e => {
+      const el = e.target.closest('.srow');
+      closeAll(el);
+      if (!el || e.target.closest('.row-trash')) return;
+      sw = { el, main: el.querySelector('.row-main'), x: e.clientX, y: e.clientY, id: e.pointerId, on: false, base: el.classList.contains('open') ? -W : 0, pos: 0 };
+    });
+    box.addEventListener('pointermove', e => {
+      if (!sw || e.pointerId !== sw.id) return;
+      const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+      if (!sw.on) {
+        if (sw.el.classList.contains('dragging') || Math.abs(dy) > 10) { sw = null; return; }
+        if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+        sw.on = true;
+        sw.main.style.transition = 'none';
+        try { box.setPointerCapture(sw.id); } catch (err) {}
+      }
+      sw.pos = Math.max(-W - 30, Math.min(0, sw.base + dx));
+      sw.main.style.transform = 'translateX(' + sw.pos + 'px)';
+    });
+    const up = e => {
+      if (!sw || e.pointerId !== sw.id) return;
+      const s = sw;
+      sw = null;
+      if (!s.on) return;
+      s.main.style.transition = '';
+      s.main.style.transform = '';
+      s.el.classList.toggle('open', s.pos < -W / 2);
+      s.el._noClickUntil = Date.now() + 400;
+    };
+    box.addEventListener('pointerup', up);
+    box.addEventListener('pointercancel', up);
+    box.addEventListener('touchmove', e => { if (sw && sw.on) e.preventDefault(); }, { passive: false });
+    box.addEventListener('click', e => {
+      const el = e.target.closest('.srow');
+      if (el && el.classList.contains('open') && !e.target.closest('.row-trash')) { el.classList.remove('open'); e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  }
+  async function removeFolder(id) {
+    for (const r of S.rolls) if (r.folderId === id) { r.folderId = null; await DB.put('rolls', r); }
+    await DB.del('folders', id);
+    S.folders = S.folders.filter(x => x.id !== id);
+  }
+  const rollLine = r => swipeRow(rollRow(r, () => openRoll(r.id)), 'r:' + r.id, async () => { await deleteRoll(r.id); refreshAll(); toast(t('deleted')); });
+
+  function openList(kind, host) {
+    const sheet = host || openSheet({ title: t(kind) });
+    const round = (act, ic, label, fn) => h('button', { class: 'icon-btn', 'aria-label': label, 'data-act': act, onclick: fn }, icon(ic));
+    const addMenu = async () => {
       const a = await ask(t('archive'), [{ label: t('newFolder'), value: 'folder' }, { label: t('importCsv'), value: 'import' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
       if (a === 'folder') { if (await createFolder()) refreshAll(); } else if (a === 'import') openImport();
-    } }, icon('plus')));
+    };
     sortable(sheet.body, {
       onMove: async (key, index) => { await reorderTo(kind === 'archive' ? archiveItems() : activeItems(), key, index); refreshAll(); },
       onInto: kind === 'archive' ? async (key, folderKey) => {
@@ -465,28 +547,27 @@
       } : null,
       onHold: keyMenu
     });
+    swipeable(sheet.body);
     sheet.render = () => {
       sheet.setTitle(t(kind));
       if (kind === 'active') {
+        sheet.setRight(round('add', 'plus', t('newRoll'), () => openRollEdit()));
         const act = activeItems();
         if (!act.length) sheet.body.replaceChildren(h('p', { class: 'empty' }, t('emptyActive')));
-        else sheet.body.replaceChildren(...act.map(it => { const row = rollRow(it.obj, () => openRoll(it.obj.id)); row.dataset.drag = it.key; return row; }), h('p', { class: 'hint drag-hint' }, t('dragHint')));
+        else sheet.body.replaceChildren(...act.map(it => rollLine(it.obj)), h('p', { class: 'hint drag-hint' }, t('dragHint')));
         return;
       }
       const rolls = archivedRolls();
-      const folders = S.folders.slice().sort((a, b) => a.name.localeCompare(b.name));
-      const kids = [];
-      if (rolls.length) kids.push(h('div', { class: 'seg tools' },
-        h('button', { 'data-act': 'filter', onclick: openFilter }, icon('filter'), t('filter')),
-        h('button', { 'data-act': 'map', onclick: () => openMap(t('archive'), shotsOf(rolls)) }, icon('map'), t('map'))));
+      if (sheet.setLeft) sheet.setLeft(rolls.length ? h('button', { class: 'pill-btn', 'data-act': 'filter', onclick: openFilter }, t('filter')) : null);
+      sheet.setRight(h('div', { class: 'btn-row' },
+        rolls.length ? round('map', 'map', t('map'), () => openMap(t('archive'), shotsOf(rolls))) : null,
+        round('add-folder', 'plus', t('newFolder'), addMenu)));
       const items = archiveItems();
-      items.forEach(it => {
-        const row = it.folder ? folderRow(it.obj, () => openFolder(it.obj.id)) : rollRow(it.obj, () => openRoll(it.obj.id));
-        row.dataset.drag = it.key;
-        kids.push(row);
-      });
+      const kids = items.map(it => it.folder
+        ? swipeRow(folderRow(it.obj, () => openFolder(it.obj.id)), it.key, async () => { await removeFolder(it.obj.id); refreshAll(); toast(t('deleted')); })
+        : rollLine(it.obj));
       if (items.length) kids.push(h('p', { class: 'hint drag-hint' }, t('dragHint')));
-      if (!rolls.length && !folders.length) kids.push(h('p', { class: 'empty' }, t('emptyArchive')));
+      else kids.push(h('p', { class: 'empty' }, t('emptyArchive')));
       sheet.body.replaceChildren(...kids);
     };
     sheet.render();
@@ -509,7 +590,7 @@
       { label: t('moreDelete'), value: 'delete', kind: 'outline' },
       { label: t('cancel'), value: null, kind: 'ghost' }
     ].filter(Boolean));
-    if (a === 'edit') { if (ctx.edit) ctx.edit(); else openRoll(id, true); }
+    if (a === 'edit') openRollEdit(id);
     else if (a === 'tags') openTags(roll, 'rolls');
     else if (a === 'scans') openScans(id);
     else if (a === 'map') openMap(roll.title, rollShots(id).reverse(), true);
@@ -547,9 +628,7 @@
     else if (a === 'delete') {
       const ok = await ask(t('askDeleteFolder', { t: f.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
       if (!ok) return;
-      for (const r of S.rolls) if (r.folderId === id) { r.folderId = null; await DB.put('rolls', r); }
-      await DB.del('folders', id);
-      S.folders = S.folders.filter(x => x.id !== id);
+      await removeFolder(id);
       if (close) close();
       refreshAll();
     }
@@ -573,43 +652,18 @@
   }
 
   // ------------------------------------------------------------ Rollenansicht
-  function openRoll(id, editNow) {
+  function openRoll(id) {
     const roll = rollById(id);
     if (!roll) return;
-    const d = pickRoll(roll);
-    d.pns = !!d.pns;
-    let orig = JSON.stringify(d);
-    const dirty = () => JSON.stringify(d) !== orig;
-    const saveMaster = async () => {
-      Object.assign(roll, cleanRoll(d, roll.title));
-      await DB.put('rolls', roll);
-      orig = JSON.stringify(d);
-    };
-
-    const sheet = openSheet({
-      beforeClose: async () => {
-        if (!rollById(id) || !dirty()) return true;
-        const a = await askSave(t('askSave'));
-        if (a === 'save') { try { await saveMaster(); refreshAll(); } catch (e) { toast(t('saveFail')); return false; } return true; }
-        if (a === 'discard') return true;
-        return false;
-      }
-    });
+    const sheet = openSheet({});
     sheet.rollId = id;
-    sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: more }, icon('more')));
-
+    sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: () => rollMenu(id, { close: () => sheet.close() }) }, icon('more')));
+    const heading = h('h2', { class: 'roll-title' });
+    const subline = h('button', { class: 'roll-sub', 'data-act': 'roll-edit', onclick: () => openRollEdit(id) });
+    const tagLine = h('div', { class: 'tags-block' });
     const info = h('p', { class: 'roll-info' });
     const list = h('div', { class: 'shots' });
-    // Stammdaten stehen als ruhige Unterzeile unter dem Titel; bearbeitet wird über das Menü
-    const form = rollForm(d);
-    form.hidden = true;
-    const heading = h('h2', { class: 'roll-title' });
-    const subline = h('p', { class: 'roll-sub' });
-    const startEdit = () => { form.hidden = false; heading.hidden = true; subline.hidden = true; sheet.body.scrollTop = 0; };
-    const tagLine = h('div', { class: 'tags-block' });
-    sheet.body.append(heading, subline, tagLine, form, info, list);
-
-    function more() { return rollMenu(id, { edit: startEdit, flush: () => { if (dirty()) Object.assign(roll, cleanRoll(d, roll.title)); }, close: () => sheet.close() }); }
+    sheet.body.append(heading, subline, tagLine, info, list);
 
     sheet.render = () => {
       if (!rollById(id)) { sheet.close(); return; }
@@ -617,16 +671,37 @@
       sheet.setTitle(h('span', { class: 'num', 'data-count': '' }, pad2(frameCount(id)) + ' / ' + roll.frames));
       heading.textContent = roll.title;
       tagLine.replaceChildren(...[tagChips(roll.tags)].filter(Boolean));
-      subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.', roll.pns ? 'P&S' : ''].filter(Boolean).join(' / ');
+      subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.', roll.pns ? 'P&S' : '', roll.simple ? 'Simple' : ''].filter(Boolean).join(' / ');
       const since = activeSince(id);
       info.textContent = since != null ? t('activeSince', { d: fmtDate(since) }) : t('noShotsYet');
       list.replaceChildren(...shots.map(s => shotRow(s)));
       sheet.foot.className = 'sheet-foot center';
       if (roll.archived) sheet.foot.replaceChildren();
-      else if (!sheet.foot.firstChild) sheet.foot.append(h('button', { class: 'shutter', 'aria-label': t('newShot'), 'data-act': 'shutter', onclick: () => { haptic(); openShot(id, null); } }));
+      else if (!sheet.foot.firstChild) sheet.foot.append(h('button', { class: 'shutter', 'aria-label': t('newShot'), 'data-act': 'shutter', onclick: () => { haptic(); if (roll.simple) quickShot(roll); else openShot(id, null); } }));
     };
     sheet.render();
-    if (editNow) startEdit();
+  }
+
+  // Simple Mode: Auslöser speichert sofort Nummer, Zeit und Standort; alles andere lässt sich später nachtragen
+  async function quickShot(roll) {
+    const rec = { id: uid(), rollId: roll.id, createdAt: Date.now(), no: nextNo(roll.id), sub: 1, shutter: null, aperture: null, focal: null, flash: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null };
+    try { await DB.put('shots', rec); } catch (e) { toast(t('saveFail')); return; }
+    S.shots.push(rec);
+    refreshAll();
+    toast(t('shotSaved', { n: noLabel(rec.no, 1) }));
+    checkFull(roll);
+    if (!navigator.geolocation) return;
+    let precise = false, mine = null;
+    const ok = (p, isPrecise) => {
+      if (precise && !isPrecise) return;
+      if (!S.shots.includes(rec) || rec.lat !== mine) return; // gelöscht oder inzwischen von Hand geändert
+      if (isPrecise) precise = true;
+      rec.lat = mine = p.coords.latitude; rec.lon = p.coords.longitude; rec.acc = p.coords.accuracy;
+      DB.put('shots', rec).catch(() => {});
+      refreshAll();
+    };
+    navigator.geolocation.getCurrentPosition(p => ok(p, false), () => {}, { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 });
+    navigator.geolocation.getCurrentPosition(p => ok(p, true), () => {}, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
   }
 
   async function deleteRoll(id) {
@@ -658,8 +733,8 @@
   }
 
   // ------------------------------------------------------------ Wahlrad
-  function makeWheel(values, fmt, value, onChange) {
-    const IH = 52;
+  function makeWheel(values, fmt, value, onChange, small) {
+    const IH = small ? 40 : 52;
     let idx = values.indexOf(value);
     if (idx < 0) idx = 0;
     const list = h('div', { class: 'wheel-list' });
@@ -671,7 +746,7 @@
       if (i !== idx) { idx = i; mark(); haptic(); onChange(values[idx]); }
     }, { passive: true });
     mark();
-    const el = h('div', { class: 'wheel' }, h('div', { class: 'wheel-band' }), list);
+    const el = h('div', { class: 'wheel' + (small ? ' small' : '') }, h('div', { class: 'wheel-band' }), list);
     el.sync = () => { list.scrollTop = idx * IH; };
     return el;
   }
@@ -707,23 +782,24 @@
   }
 
   // ------------------------------------------------------------ Shot-Dialog
+  // Shot anlegen und bearbeiten: Wahlräder oben, darunter Einstellungszeilen, oben rechts sichern
   function openShot(rollId, shotId) {
     const roll = rollById(rollId);
     if (!roll) return;
     const shot = shotId ? S.shots.find(s => s.id === shotId) : null;
     const isNew = !shot;
+    const pns = !!roll.pns;
     const last = lastValues(rollId);
-    // Point-and-Shoot: nur Blitz, Standort und Zeit, dazu Notiz und Referenzfoto
-    const STEPS = roll.pns ? ['flash', 'loc', 'date', 'notes', 'ref', 'done'] : ['no', 'shutter', 'aperture', 'focal', 'flash', 'loc', 'date', 'notes', 'ref', 'done'];
-    const LAST = STEPS.length - 1;
+    const nn = v => (v == null ? null : v);
+    // Point-and-Shoot: Zeit, Blende und Brennweite werden nicht abgefragt, vorhandene Werte bleiben aber gespeichert
     const d = isNew
-      ? { no: nextNo(rollId), shutter: last.shutter, aperture: last.aperture, focal: last.focal, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null, flash: null }
-      : { flash: shot.flash == null ? null : !!shot.flash, no: shot.no, shutter: shot.shutter, aperture: shot.aperture, focal: shot.focal, lat: shot.lat, lon: shot.lon, acc: shot.acc, date: shot.date, note: shot.note || '', audioId: shot.audioId || null, photoId: shot.photoId || null, thumb: shot.thumb || null };
-    if (isNew && roll.pns) d.shutter = d.aperture = d.focal = null;
-    const orig = JSON.stringify(d);
-    const wheelVal = { flash: d.flash != null ? d.flash : !!last.flash, shutter: d.shutter != null ? d.shutter : last.shutter, aperture: d.aperture != null ? d.aperture : last.aperture, focal: d.focal != null ? d.focal : last.focal };
+      ? { no: nextNo(rollId), shutter: pns ? null : last.shutter, aperture: pns ? null : last.aperture, focal: pns ? null : last.focal, flash: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null }
+      : { no: shot.no, shutter: nn(shot.shutter), aperture: nn(shot.aperture), focal: nn(shot.focal), flash: shot.flash == null ? null : !!shot.flash, lat: nn(shot.lat), lon: nn(shot.lon), acc: nn(shot.acc), date: nn(shot.date), note: shot.note || '', audioId: shot.audioId || null, photoId: shot.photoId || null, thumb: shot.thumb || null };
+    // bei einem neuen Shot zählt der automatisch ermittelte Standort nicht als Änderung
+    const snap = () => JSON.stringify(isNew ? Object.assign({}, d, { lat: 0, lon: 0, acc: 0 }) : d);
+    const orig = snap();
 
-    let step = isNew ? 0 : LAST, jumped = false, saving = false;
+    let saving = false;
     let newPhoto = null, newPhotoUrl = null, newAudio = null, newAudioUrl = null;
     let rec = null, player = null;
     const geo = { state: 'idle', token: 0 };
@@ -731,8 +807,7 @@
     const sheet = openSheet({
       beforeClose: async () => {
         if (saving) return true;
-        const changed = isNew ? step > 0 : (JSON.stringify(d) !== orig || newPhoto || newAudio);
-        if (!changed) return true;
+        if (snap() === orig && !newPhoto && !newAudio && !rec) return true;
         const a = await askSave(t('askSaveShot'));
         if (a === 'save') { await finish(); return false; }
         return a === 'discard';
@@ -745,6 +820,7 @@
         if (newAudioUrl) URL.revokeObjectURL(newAudioUrl);
       }
     });
+    sheet.setRight(h('button', { class: 'icon-btn ok', 'data-act': 'finish', 'aria-label': t('save'), onclick: () => { haptic(); finish(); } }, icon('check')));
 
     const predictedSub = () => {
       if (!isNew && shot.no === d.no) return shot.sub;
@@ -752,12 +828,31 @@
       return same.length ? Math.max(...same.map(s => s.sub)) + 1 : 1;
     };
 
+    // --- Nummer
+    const noValue = h('span', { class: 'step-num', 'data-no': '' });
+    const noNote = h('p', { class: 'group-note', hidden: true });
+    function updateNo() {
+      const sub = predictedSub();
+      sheet.setTitle(t('shot') + ' ' + noLabel(d.no, sub));
+      noValue.textContent = pad2(d.no);
+      noNote.hidden = sub <= 1;
+      noNote.textContent = sub > 1 ? t('noExists', { n: d.no, m: noLabel(d.no, sub) }) : '';
+    }
+
     // --- Standort
+    const locValue = h('span', { class: 'line-value', 'data-loc': '' });
+    const locNote = h('p', { class: 'group-note', hidden: true }, t('locDenied'));
+    function updateLoc() {
+      if (sheet.closed) return;
+      locValue.textContent = d.lat != null ? fmtCoord(d.lat, d.lon) : geo.state === 'busy' ? t('locBusy') : geo.state === 'fail' ? t('locFail') : '–';
+      locNote.hidden = !(geo.state === 'fail' && geo.why === 'denied' && d.lat == null);
+    }
     function locate() {
-      if (!navigator.geolocation) { geo.state = 'fail'; refreshStep(); return; }
+      if (!navigator.geolocation) { geo.state = 'fail'; updateLoc(); return; }
       const token = ++geo.token;
       geo.state = 'busy'; geo.why = null;
-      refreshStep();
+      d.lat = d.lon = d.acc = null;
+      updateLoc();
       let got = false, pending = 2;
       const ok = (p, precise) => {
         if (token !== geo.token || sheet.closed) return;
@@ -765,24 +860,37 @@
         got = precise ? 'precise' : 'coarse';
         d.lat = p.coords.latitude; d.lon = p.coords.longitude; d.acc = p.coords.accuracy;
         geo.state = 'ok';
-        refreshStep();
+        updateLoc();
       };
       const fail = e => {
         if (token !== geo.token || sheet.closed) return;
         if (e && e.code === 1) geo.why = 'denied';
         if (--pending > 0 || got) return;
         geo.state = 'fail';
-        refreshStep();
+        updateLoc();
       };
-      // erst eine schnelle, grobe Ortung, parallel die genaue per GPS; die bessere gewinnt
-      // immer frisch orten, damit nie der Standort des vorigen Shots übernommen wird
+      // erst eine schnelle, grobe Ortung, parallel die genaue per GPS; immer frisch, nie der Standort des vorigen Shots
       navigator.geolocation.getCurrentPosition(p => ok(p, false), fail, { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 });
       navigator.geolocation.getCurrentPosition(p => ok(p, true), fail, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
     }
-    const refreshStep = () => { if (!sheet.closed && (STEPS[step] === 'loc' || STEPS[step] === 'done')) render(); };
+    async function locMenu() {
+      const a = await ask(t('st_loc'), [
+        { label: t('locRetry'), value: 'gps' },
+        { label: t('pickOnMap'), value: 'map' },
+        d.lat != null ? { label: t('locRemove'), value: 'none', kind: 'outline' } : null,
+        { label: t('cancel'), value: null, kind: 'ghost' }
+      ].filter(Boolean));
+      if (a === 'gps') locate();
+      else if (a === 'map') openPicker(d.lat != null ? { lat: d.lat, lon: d.lon, z: 16 } : lastPlace(rollId), c => {
+        geo.token++; geo.state = 'ok';
+        d.lat = c.lat; d.lon = c.lon; d.acc = null;
+        updateLoc();
+      });
+      else if (a === 'none') { geo.token++; geo.state = 'idle'; d.lat = d.lon = d.acc = null; updateLoc(); }
+    }
 
     // --- Sprachnotiz
-    const audioBox = h('div', { class: 'audio-box' });
+    const audioBox = h('div', { class: 'line-slot' });
     const hasAudio = () => !!(newAudio || d.audioId);
     async function startRec() {
       if (!navigator.mediaDevices || !window.MediaRecorder) { toast(t('micFail')); return; }
@@ -831,21 +939,24 @@
     }
     function renderAudio() {
       if (sheet.closed) return;
+      const label = h('span', { class: 'line-label' }, t('voiceNote'));
       if (rec) {
         const sec = Math.floor((Date.now() - rec.start) / 1000);
-        audioBox.replaceChildren(h('button', { class: 'btn primary', 'data-act': 'rec-stop', onclick: () => stopRec(false) },
-          h('span', { class: 'rec-dot' }), t('recStop') + '  ' + Math.floor(sec / 60) + ':' + pad2(sec % 60)));
+        audioBox.replaceChildren(h('button', { class: 'line', 'data-act': 'rec-stop', onclick: () => stopRec(false) },
+          label, h('span', { class: 'line-value live' }, h('span', { class: 'rec-dot' }), Math.floor(sec / 60) + ':' + pad2(sec % 60) + '  ' + t('stop'))));
       } else if (hasAudio()) {
-        audioBox.replaceChildren(h('div', { class: 'audio-row' },
-          h('button', { class: 'btn', 'data-act': 'play', onclick: togglePlay }, icon(player ? 'stop' : 'play'), player ? t('stop') : t('voiceNote')),
-          h('button', { class: 'btn square', 'aria-label': t('removeAudio'), 'data-act': 'audio-remove', onclick: () => { if (player) { player.pause(); player = null; } newAudio = null; d.audioId = null; renderAudio(); } }, icon('trash'))));
+        audioBox.replaceChildren(h('div', { class: 'line' },
+          h('button', { class: 'line-main', 'data-act': 'play', onclick: togglePlay }, label, h('span', { class: 'line-value accent' }, t(player ? 'stop' : 'play'))),
+          h('button', { class: 'line-icon', 'aria-label': t('removeAudio'), 'data-act': 'audio-remove', onclick: () => { if (player) { player.pause(); player = null; } newAudio = null; d.audioId = null; renderAudio(); } }, icon('trash'))));
       } else {
-        audioBox.replaceChildren(h('button', { class: 'btn', 'data-act': 'rec-start', onclick: startRec }, icon('mic'), t('recStart')));
+        audioBox.replaceChildren(h('button', { class: 'line', 'data-act': 'rec-start', onclick: startRec }, label, h('span', { class: 'line-value accent' }, t('record'))));
       }
     }
 
     // --- Referenzfoto
+    const refValue = h('span', { class: 'line-value' });
     const hasPhoto = () => !!(newPhoto || d.photoId);
+    function updateRef() { refValue.replaceChildren(d.thumb ? h('img', { class: 'line-thumb', src: d.thumb, alt: t('photo') }) : hasPhoto() ? t('photo') : t('add')); }
     async function onPick(e) {
       const file = e.target.files && e.target.files[0];
       e.target.value = '';
@@ -857,122 +968,18 @@
         d.photoId = null;
         d.thumb = newPhoto.thumb;
       } catch (err) { toast(t('photoFail')); }
-      if (!sheet.closed && STEPS[step] === 'ref') render();
+      if (!sheet.closed) updateRef();
     }
     const camIn = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true, 'data-in': 'camera', onchange: onPick });
     const libIn = h('input', { type: 'file', accept: 'image/*', hidden: true, 'data-in': 'library', onchange: onPick });
-
-    // --- Schritte
-    function stepContent(key) {
-      if (key === 'no') {
-        const sub = predictedSub();
-        return h('div', { class: 'step-box' },
-          h('div', { class: 'stepper' },
-            h('button', { 'aria-label': '−', 'data-act': 'no-minus', onclick: () => { haptic(); d.no = Math.max(0, d.no - 1); render(); } }, '−'),
-            h('div', { class: 'bignum' }, pad2(d.no)),
-            h('button', { 'aria-label': '+', 'data-act': 'no-plus', onclick: () => { haptic(); d.no++; render(); } }, '+')),
-          sub > 1 ? h('p', { class: 'hint' }, t('noExists', { n: d.no, m: noLabel(d.no, sub) })) : null);
-      }
-      if (key === 'shutter') return makeWheel(SHUTTERS, v => v, wheelVal.shutter, v => { wheelVal.shutter = v; });
-      if (key === 'aperture') return makeWheel(APERTURES, fmtAperture, wheelVal.aperture, v => { wheelVal.aperture = v; });
-      if (key === 'focal') return makeWheel(FOCALS, fmtFocal, wheelVal.focal, v => { wheelVal.focal = v; });
-      if (key === 'flash') {
-        return h('div', { class: 'seg flash-seg' }, [[false, 'flashOff'], [true, 'flashOn']].map(([v, k]) =>
-          h('button', { class: wheelVal.flash === v ? 'on' : '', 'data-flash': String(v), onclick: () => { haptic(); wheelVal.flash = v; render(); } }, v ? icon('bolt') : null, t(k))));
-      }
-      if (key === 'loc') {
-        const busy = geo.state === 'busy';
-        const has = d.lat != null && !busy;
-        return h('div', { class: 'step-box' },
-          h('div', { class: 'big-value' + (has ? '' : ' dim'), 'data-loc': '' }, busy ? t('locBusy') : has ? fmtCoord(d.lat, d.lon) : t(geo.state === 'fail' ? 'locFail' : 'locNone')),
-          has && d.acc != null ? h('p', { class: 'hint' }, '± ' + Math.round(d.acc) + ' m') : null,
-          !busy && !has && geo.state === 'fail' && geo.why === 'denied' ? h('p', { class: 'hint', 'data-loc-denied': '' }, t('locDenied')) : null,
-          h('button', { class: 'btn', disabled: busy, onclick: () => { haptic(); locate(); } }, icon('pin'), t('locRetry')),
-          h('button', {
-            class: 'btn', 'data-act': 'pick-map', onclick: () => openPicker(d.lat != null ? { lat: d.lat, lon: d.lon, z: 16 } : lastPlace(rollId), c => {
-              geo.token++; geo.state = 'ok';
-              d.lat = c.lat; d.lon = c.lon; d.acc = null;
-              if (!sheet.closed) render();
-            })
-          }, icon('map'), t('pickOnMap')));
-      }
-      if (key === 'date') {
-        return h('input', {
-          class: 'date-input', type: 'datetime-local', value: toLocalInput(d.date), 'aria-label': t('st_date'),
-          oninput: e => { const v = e.target.value; d.date = v ? new Date(v).getTime() : null; }
-        });
-      }
-      if (key === 'notes') {
-        if (d.audioId) mediaUrl(d.audioId);
-        renderAudio();
-        const ta = h('textarea', { class: 'input', placeholder: t('notePh'), 'aria-label': t('st_notes'), oninput: e => { d.note = e.target.value; } });
-        ta.value = d.note;
-        return h('div', { class: 'step-box' }, ta, audioBox);
-      }
-      if (key === 'ref') {
-        if (hasPhoto()) {
-          const img = h('img', { class: 'photo-preview', alt: '' });
-          if (newPhotoUrl) img.src = newPhotoUrl;
-          else mediaUrl(d.photoId).then(u => { if (u) img.src = u; });
-          return h('div', { class: 'step-box' }, img, camIn, libIn,
-            h('button', { class: 'btn', 'data-act': 'photo-remove', onclick: () => { newPhoto = null; d.photoId = null; d.thumb = null; render(); } }, icon('trash'), t('removePhoto')));
-        }
-        return h('div', { class: 'step-box' }, camIn, libIn,
-          h('button', { class: 'btn', onclick: () => camIn.click() }, icon('camera'), t('takePhoto')),
-          h('button', { class: 'btn', onclick: () => libIn.click() }, icon('image'), t('pickPhoto')));
-      }
-      // Übersicht
-      const row = (name, value, cls) => STEPS.indexOf(name) < 0 ? null : h('button', { class: 'sum-row', 'data-jump': name, onclick: () => { step = STEPS.indexOf(name); jumped = true; render(); } },
-        h('span', { class: 'sum-label' }, t('st_' + name)),
-        h('span', { class: 'sum-value' + (value == null || value === '' ? ' nil' : '') + (cls ? ' ' + cls : '') }, value == null || value === '' ? '–' : value));
-      const noteVal = d.note ? d.note : hasAudio() ? t('voiceNote') : null;
-      return h('div', null,
-        row('no', noLabel(d.no, predictedSub())),
-        row('shutter', d.shutter == null ? null : fmtShutterUnit(d.shutter)),
-        row('aperture', d.aperture == null ? null : fmtAperture(d.aperture)),
-        row('focal', d.focal == null ? null : fmtFocal(d.focal)),
-        row('flash', d.flash == null ? null : cap(t(d.flash ? 'yes' : 'no'))),
-        row('loc', geo.state === 'busy' ? t('locBusy') : d.lat != null ? fmtCoord(d.lat, d.lon) : null, geo.state === 'busy' ? 'text' : ''),
-        row('date', d.date == null ? null : fmtDateTime(d.date)),
-        row('notes', noteVal, 'text'),
-        row('ref', d.thumb ? h('img', { src: d.thumb, alt: t('photo') }) : hasPhoto() ? t('photo') : null),
-        isNew ? null : h('div', { class: 'below' }, h('button', { class: 'btn outline', 'data-act': 'shot-delete', onclick: removeShot }, icon('trash'), t('deleteShot'))));
-    }
-
-    function commit(key) { if (key in wheelVal) d[key] = wheelVal[key]; }
-    function clear(key) {
-      if (key in wheelVal) d[key] = null;
-      else if (key === 'loc') { geo.token++; geo.state = 'idle'; d.lat = d.lon = d.acc = null; }
-      else if (key === 'date') d.date = null;
-      else if (key === 'notes') { stopRec(true); if (player) { player.pause(); player = null; } d.note = ''; newAudio = null; d.audioId = null; }
-      else if (key === 'ref') { newPhoto = null; d.photoId = null; d.thumb = null; }
-    }
-    function leave(key, target) {
-      if (key === 'notes') { stopRec(false); if (player) { player.pause(); player = null; } }
-      if (jumped) { jumped = false; step = LAST; } else step = target;
-      render();
-    }
-
-    function render() {
-      const key = STEPS[step];
-      sheet.setTitle(t('shot') + ' ' + noLabel(d.no, predictedSub()));
-      const content = stepContent(key);
-      sheet.body.replaceChildren(
-        h('div', { class: 'progress', 'aria-hidden': 'true' }, STEPS.map((_, i) => h('i', { class: i === step ? 'on' : i < step ? 'done' : '' }))),
-        h('h2', { class: 'step-title' }, t('st_' + key)),
-        content);
-      sheet.body.classList.add('steps');
-      if (key !== 'notes' && key !== 'done') content.classList.add('low');
-      if (content.sync) content.sync();
-      sheet.foot.className = 'sheet-foot three';
-      const back = h('button', { class: 'btn ghost' + (step === 0 && !jumped ? ' invisible' : ''), 'data-act': 'back', onclick: () => leave(key, step - 1) }, t('back'));
-      if (key === 'done') {
-        sheet.foot.replaceChildren(back, h('span'), h('button', { class: 'btn primary', 'data-act': 'finish', onclick: () => { haptic(); finish(); } }, t('finish')));
-      } else {
-        sheet.foot.replaceChildren(back,
-          h('button', { class: 'btn ghost' + (key === 'no' ? ' invisible' : ''), 'data-act': 'skip', onclick: () => { clear(key); leave(key, step + 1); } }, t(jumped ? 'clear' : 'skip')),
-          h('button', { class: 'btn primary', 'data-act': 'next', onclick: () => { commit(key); leave(key, step + 1); } }, t(jumped ? 'apply' : 'next')));
-      }
+    async function refMenu() {
+      const a = await ask(t('st_ref'), [
+        { label: t('takePhoto'), value: 'cam', onTap: () => camIn.click() },
+        { label: t('pickPhoto'), value: 'lib', onTap: () => libIn.click() },
+        hasPhoto() ? { label: t('removePhoto'), value: 'none', kind: 'outline' } : null,
+        { label: t('cancel'), value: null, kind: 'ghost' }
+      ].filter(Boolean));
+      if (a === 'none') { newPhoto = null; d.photoId = null; d.thumb = null; updateRef(); }
     }
 
     async function finish() {
@@ -1023,7 +1030,38 @@
       toast(t('deleted'));
     }
 
-    render();
+    // --- Aufbau
+    const wheels = pns ? [] : [['shutter', SHUTTERS, v => v], ['aperture', APERTURES, fmtAperture], ['focal', FOCALS, fmtFocal]].map(([k, vals, f]) => {
+      const list = [null].concat(vals);
+      if (d[k] != null && !list.includes(d[k])) list.splice(1, 0, d[k]);
+      const w = makeWheel(list, v => (v == null ? '–' : f(v)), d[k], v => { d[k] = v; }, true);
+      w.dataset.wheel = k;
+      return w;
+    });
+    const dateIn = h('input', { type: 'datetime-local', value: toLocalInput(d.date), 'data-field': 'date', 'aria-label': t('st_date'), oninput: e => { const v = e.target.value; d.date = v ? new Date(v).getTime() : null; } });
+    const note = h('textarea', { class: 'line-area', placeholder: t('notePh'), 'aria-label': t('st_notes'), rows: 2, oninput: e => { d.note = e.target.value; } });
+    note.value = d.note;
+    sheet.body.append(...[
+      wheels.length ? h('div', { class: 'wheels3' },
+        h('div', { class: 'wheels3-head' }, h('span', null, t('st_shutter')), h('span', null, t('st_aperture')), h('span', null, t('st_focal'))),
+        h('div', { class: 'wheels3-row' }, wheels)) : null,
+      group(
+        h('div', { class: 'line' }, h('span', { class: 'line-label' }, t('st_no')),
+          h('span', { class: 'stepper-s' },
+            h('button', { 'aria-label': '−', 'data-act': 'no-minus', onclick: () => { haptic(); d.no = Math.max(0, d.no - 1); updateNo(); } }, '−'),
+            noValue,
+            h('button', { 'aria-label': '+', 'data-act': 'no-plus', onclick: () => { haptic(); d.no++; updateNo(); } }, '+'))),
+        lineSwitch(t('st_flash'), d.flash === true, v => { haptic(); d.flash = v; }, 'flash')),
+      noNote,
+      group(lineBtn(t('st_loc'), locValue, () => { haptic(); locMenu(); }, { 'data-act': 'loc' }), line(t('st_date'), dateIn)),
+      locNote,
+      group(note, audioBox, lineBtn(t('st_ref'), refValue, refMenu, { 'data-act': 'ref' })),
+      isNew ? null : group(h('button', { class: 'line danger', 'data-act': 'shot-delete', onclick: removeShot }, t('deleteShot'))),
+      camIn, libIn
+    ].filter(Boolean));
+    wheels.forEach(w => w.sync());
+    if (d.audioId) mediaUrl(d.audioId);
+    updateNo(); updateLoc(); updateRef(); renderAudio();
     if (isNew) locate();
   }
 
@@ -1123,6 +1161,7 @@
       onMove: async (key, index) => { await reorderTo(byOrder(archivedRolls().filter(r => r.folderId === id)).map(o => ({ obj: o, folder: false, key: 'r:' + o.id })), key, index); refreshAll(); },
       onHold: keyMenu
     });
+    swipeable(sheet.body);
     sheet.render = () => {
       const f = folderById(id);
       if (!f) { sheet.close(); return; }
@@ -1131,7 +1170,7 @@
       const chips = tagChips(f.tags);
       sheet.body.replaceChildren(...[
         chips ? h('div', { class: 'tags-block' }, chips) : null,
-        ...(rolls.length ? rolls.map(r => { const row = rollRow(r, () => openRoll(r.id)); row.dataset.drag = 'r:' + r.id; return row; }) : [h('p', { class: 'empty' }, t('emptyFolder'))])
+        ...(rolls.length ? rolls.map(rollLine) : [h('p', { class: 'empty' }, t('emptyFolder'))])
       ].filter(Boolean));
     };
     sheet.render();
@@ -1260,6 +1299,7 @@
   // ------------------------------------------------------------ Scans zuordnen
   const IMG_RE = /\.(jpe?g|png|tiff?|webp|heic)$/i;
   function exifMeta(roll, s) {
+    s = visible(roll)(s);
     const sh = s.shutter;
     const exposure = sh == null || sh === 'B' ? null : /s$/.test(sh) ? [parseInt(sh, 10), 1] : sh.split('/').map(Number);
     return {
@@ -1522,7 +1562,7 @@
 
   function openCustom() {
     let el = 'bg';
-    const sheet = openSheet({ title: t('customEdit') });
+    const sheet = openSheet({ title: t('th_custom') });
     if (!S.settings.custom) {
       // mit den Farben des aktuellen Themes beginnen
       const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
@@ -1531,7 +1571,7 @@
       CUSTOM_KEYS.forEach(k => { if (/^#[0-9a-f]{6}$/i.test(start[k])) S.settings.custom[k] = start[k].toUpperCase(); });
     }
     sheet.render = () => {
-      sheet.setTitle(t('customEdit'));
+      sheet.setTitle(t('th_custom'));
       const c = customColors();
       const top = sheet.body.scrollTop;
       sheet.body.replaceChildren(
@@ -1540,28 +1580,7 @@
         h('div', { class: 'palette' }, PALETTE.flat().map(x => h('button', {
           class: 'swatch' + (c[el] === x ? ' on' : ''), style: 'background:' + x, 'aria-label': x, 'data-color': x,
           onclick: () => { S.settings.custom = Object.assign(customColors(), { [el]: x }); S.settings.theme = 'custom'; saveSettings(); }
-        }))),
-        h('button', {
-          class: 'btn below', 'data-act': 'layout-save', onclick: async () => {
-            const name = await askText(t('saveLayout'), '', t('layoutName'));
-            if (!name) return;
-            S.settings.layouts = (S.settings.layouts || []).concat({ id: uid(), name, colors: customColors() });
-            S.settings.custom = customColors();
-            S.settings.theme = 'custom';
-            saveSettings();
-            toast(t('saved'));
-          }
-        }, t('saveLayout')),
-        (S.settings.layouts || []).length ? h('p', { class: 'section-label' }, t('savedLayouts')) : null,
-        (S.settings.layouts || []).map(l => h('div', { class: 'tag-row' },
-          h('button', { class: 'tag-toggle' + (layoutActive(l) ? ' on' : ''), 'data-layout': l.name, onclick: () => { S.settings.custom = Object.assign({}, l.colors); S.settings.theme = 'custom'; saveSettings(); } },
-            h('span', null, l.name), h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + l.colors[k] })))),
-          h('button', {
-            class: 'icon-btn', 'aria-label': t('delete'), onclick: async () => {
-              const ok = await ask(t('askDeleteLayout', { t: l.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
-              if (ok) { S.settings.layouts = S.settings.layouts.filter(x => x.id !== l.id); saveSettings(); }
-            }
-          }, icon('trash')))));
+        }))));
       sheet.body.scrollTop = top;
     };
     sheet.render();
@@ -1724,6 +1743,8 @@
     ];
   }
 
+  // Im Point-and-Shoot-Modus bleiben Zeit, Blende und Brennweite gespeichert, werden aber nicht ausgegeben
+  const visible = roll => s => (roll.pns ? Object.assign({}, s, { shutter: null, aperture: null, focal: null }) : s);
   function buildCsv(roll) {
     const lang = S.settings.lang, de = lang !== 'en', sep = lang === 'de' ? '.' : '/';
     const num = v => (de ? String(v).replace('.', ',') : String(v));
@@ -1731,7 +1752,7 @@
     const time = ms => { const d = new Date(ms); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
     const meta = [[t('fTitle'), roll.title]].concat(rollMeta(roll).map(m => [m.label, m.value === '–' ? '' : m.value]), [[t('fNote'), roll.note || '']]);
     const header = [t('cShot'), t('cShutter'), t('cAperture'), t('cFocal'), t('cFlash'), t('cLat'), t('cLon'), t('cDate'), t('cTime'), t('cNotes'), t('cRef')];
-    const rows = rollShots(roll.id).reverse().map(s => [
+    const rows = rollShots(roll.id).reverse().map(visible(roll)).map(s => [
       noLabel(s.no, s.sub),
       s.shutter == null ? '' : fmtShutterUnit(s.shutter),
       s.aperture == null ? '' : 'f/' + num(s.aperture),
@@ -1751,7 +1772,7 @@
     const ctx = document.createElement('canvas').getContext('2d');
     const measure = (s, size, bold) => { ctx.font = (bold ? 'bold ' : '') + size + 'px Helvetica, Arial, sans-serif'; return ctx.measureText(s).width; };
     const shots = [];
-    for (const s of rollShots(roll.id).sort((a, b) => a.no - b.no || a.sub - b.sub)) {
+    for (const s of rollShots(roll.id).map(visible(roll)).sort((a, b) => a.no - b.no || a.sub - b.sub)) {
       let image = null;
       if (s.photoId) {
         try {
@@ -1778,11 +1799,11 @@
     });
   }
 
-  function openExport(preId) {
+  function openExport(preId, host) {
     let sel = preId || null, format = 'pdf', busy = false;
-    const sheet = openSheet({ title: t('export') });
+    const sheet = host || openSheet({ title: t('export') });
     const go = h('button', { class: 'btn primary', 'data-act': 'export', onclick: run });
-    sheet.foot.append(go);
+    sheet.foot.replaceChildren(go);
 
     async function run() {
       const roll = rollById(sel);
@@ -1811,19 +1832,21 @@
       if (!S.rolls.length) kids.push(h('p', { class: 'empty' }, t('emptyExport')));
       else {
         if (!sel && S.rolls.length === 1) sel = S.rolls[0].id;
-        kids.push(h('p', { class: 'section-label' }, t('exportFormat')),
-          h('div', { class: 'seg' },
-            ['pdf', 'csv'].map(f => h('button', { class: format === f ? 'on' : '', 'data-format': f, onclick: () => { format = f; sheet.render(); } },
-              t(f === 'pdf' ? 'fmtPdf' : 'fmtCsv'), h('small', null, t(f === 'pdf' ? 'fmtPdfSub' : 'fmtCsvSub'))))));
+        kids.push(h('div', { class: 'segc' },
+          ['pdf', 'csv'].map(f => h('button', { class: format === f ? 'on' : '', 'data-format': f, onclick: () => { format = f; sheet.render(); } }, t(f === 'pdf' ? 'fmtPdf' : 'fmtCsv')))),
+          h('p', { class: 'group-note' }, t(format === 'pdf' ? 'fmtPdfSub' : 'fmtCsvSub')));
         groups.forEach(([key, rolls]) => {
           if (!rolls.length) return;
           kids.push(h('p', { class: 'section-label' }, t(key)));
-          rolls.sort((a, b) => b.createdAt - a.createdAt).forEach(r => kids.push(rollRow(r, () => { sel = r.id; sheet.render(); }, ' pick' + (sel === r.id ? ' on' : ''))));
+          kids.push(group(rolls.sort((a, b) => b.createdAt - a.createdAt).map(r => h('button', { class: 'line pick' + (sel === r.id ? ' on' : ''), 'data-roll': r.id, onclick: () => { sel = r.id; sheet.render(); } },
+            h('span', { class: 'line-label two' }, h('b', null, r.title), h('small', null, [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.'].filter(Boolean).join(', '))),
+            sel === r.id ? icon('check') : null))));
         });
       }
       const top = sheet.body.scrollTop;
       sheet.body.replaceChildren(...kids);
       sheet.body.scrollTop = top;
+      go.hidden = !S.rolls.length;
       go.textContent = busy ? t('exporting') : t('doExport');
       go.disabled = !sel || busy;
     };
@@ -1833,7 +1856,7 @@
   // ------------------------------------------------------------ Einstellungen und Backup
   function loadSettings() {
     try { Object.assign(S.settings, JSON.parse(localStorage.getItem('filmlog.settings') || '{}')); } catch (e) {}
-    if (!THEMES[S.settings.theme] && S.settings.theme !== 'custom') S.settings.theme = 'salbei';
+    if (!THEMES[S.settings.theme] && S.settings.theme !== 'custom') S.settings.theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dunkel' : 'hell';
     if (!window.I18N[S.settings.lang]) S.settings.lang = 'de';
   }
   function applySettings() {
@@ -1904,45 +1927,45 @@
     toast(t('restored'));
   }
 
-  function openSettings() {
-    const sheet = openSheet({ title: t('settings') });
+  function openSettings(host) {
+    const sheet = host || openSheet({ title: t('settings') });
     const fileIn = h('input', { type: 'file', accept: '.json,application/json', hidden: true, 'data-in': 'backup', onchange: async e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) { try { await restoreBackup(f); } catch (err) { toast(t('restoreFail')); } } } });
     let busy = false;
     sheet.render = () => {
       sheet.setTitle(t('settings'));
-      sheet.body.replaceChildren(
+      const standalone = navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+      const themeLine = (k, onTap) => h('button', { class: 'line pick' + (S.settings.theme === k ? ' on' : ''), 'data-theme-pick': k, onclick: onTap },
+        h('span', { class: 'line-label' }, t('th_' + k)),
+        h('span', { class: 'swatches' }, (k === 'custom' ? CUSTOM_KEYS.map(c => customColors()[c]) : THEMES[k].colors).map(c => h('i', { style: 'background:' + c }))),
+        k === 'custom' ? icon('chev') : S.settings.theme === k ? icon('check') : h('span', { class: 'line-gap' }));
+      const lang = h('select', { 'data-field': 'lang', 'aria-label': t('setLang'), onchange: e => { S.settings.lang = e.target.value; saveSettings(); } },
+        [['de', 'Deutsch'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português']].map(([k, name]) => h('option', { value: k }, name)));
+      lang.value = S.settings.lang;
+      const top = sheet.body.scrollTop;
+      sheet.body.replaceChildren(...[
         h('p', { class: 'section-label' }, t('setTheme')),
-        h('div', { class: 'themes' }, Object.keys(THEMES).map(k => h('button', { class: 'theme' + (S.settings.theme === k ? ' on' : ''), 'data-theme-pick': k, onclick: () => { S.settings.theme = k; saveSettings(); } },
-          h('span', null, t('th_' + k)),
-          h('span', { class: 'swatches' }, THEMES[k].colors.map(c => h('i', { style: 'background:' + c })))))
-          .concat((S.settings.layouts || []).map(l => h('button', { class: 'theme' + (layoutActive(l) ? ' on' : ''), 'data-layout': l.name, onclick: () => { S.settings.custom = Object.assign({}, l.colors); S.settings.theme = 'custom'; saveSettings(); } },
-            h('span', null, l.name),
-            h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + l.colors[k] }))))))
-          .concat(h('button', { class: 'theme' + (S.settings.theme === 'custom' && !(S.settings.layouts || []).some(layoutActive) ? ' on' : ''), 'data-theme-pick': 'custom', onclick: () => { openCustom(); S.settings.theme = 'custom'; saveSettings(); } },
-            h('span', null, t('th_custom')),
-            h('span', { class: 'swatches' }, CUSTOM_KEYS.map(k => h('i', { style: 'background:' + customColors()[k] })))))),
-        h('p', { class: 'section-label' }, t('setLang')),
-        h('label', { class: 'field' }, (() => {
-          const sel = h('select', { 'data-field': 'lang', 'aria-label': t('setLang'), onchange: e => { S.settings.lang = e.target.value; saveSettings(); } },
-            [['de', 'Deutsch'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português']].map(([k, name]) => h('option', { value: k }, name)));
-          sel.value = S.settings.lang;
-          return sel;
-        })()),
+        group(
+          Object.keys(THEMES).map(k => themeLine(k, () => { S.settings.theme = k; saveSettings(); })),
+          themeLine('custom', () => { openCustom(); S.settings.theme = 'custom'; saveSettings(); })),
+        group(line(t('setLang'), lang)),
         h('p', { class: 'section-label' }, t('setBackup')),
-        h('p', { class: 'note' }, t('backupHint')),
-        h('div', { class: 'btn-stack' },
+        group(
           h('button', {
-            class: 'btn', 'data-act': 'backup-save', onclick: async () => {
+            class: 'line action', 'data-act': 'backup-save', onclick: async () => {
               if (busy) return;
               busy = true;
               try { const f = await makeBackup(); busy = false; await offerFile(t('backupReady'), f); } catch (e) { busy = false; toast(t('exportFail')); }
             }
           }, t('backupSave')),
-          h('button', { class: 'btn', 'data-act': 'backup-restore', onclick: () => fileIn.click() }, t('backupRestore'))),
+          h('button', { class: 'line action', 'data-act': 'backup-restore', onclick: () => fileIn.click() }, t('backupRestore'))),
+        h('p', { class: 'group-note' }, t('backupHint')),
         h('p', { class: 'section-label' }, t('about')),
-        h('button', { class: 'row', 'data-act': 'changelog', onclick: openChangelog },
-          h('span', { class: 'row-title' }, t('changelog')), h('span', { class: 'row-side' }, 'Alpha ' + VERSION), h('span', { class: 'row-sub' }, t('changelogSub'))),
-        fileIn);
+        group(lineBtn(t('changelog'), 'Alpha ' + VERSION, openChangelog, { 'data-act': 'changelog' })),
+        h('p', { class: 'group-note', 'data-version': '' }, 'Film_Log Alpha ' + VERSION),
+        standalone ? null : h('p', { class: 'group-note' }, t('installHint')),
+        fileIn
+      ].filter(Boolean));
+      sheet.body.scrollTop = top;
     };
     sheet.render();
   }

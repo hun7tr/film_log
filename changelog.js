@@ -6,6 +6,20 @@
 */
 window.CHANGELOG = [
   {
+    v: '0.9', date: '2026-11-13',
+    title: { de: 'Neuer Aufbau wie die Uhr-App, Simple Mode, Themes Hell und Dunkel', en: 'New layout like the Clock app, Simple Mode, Light and Dark themes' },
+    de: {
+      added: ['Tab-Leiste am unteren Rand mit Aktiv, Archiv, Export und Einstellungen', 'Simple Mode je Rolle: Der Auslöser speichert sofort Nummer, Zeit und Standort, alles andere lässt sich später nachtragen', 'Rollen und Ordner nach links wischen und über den roten Papierkorb löschen', 'Theme Dunkel mit dunklen Grautönen und Orange'],
+      changed: ['Listen in Aktiv und Archiv wie die Weckerliste: Tippen öffnet die Rolle', 'Rolle und Shot werden in einem Fenster mit Einstellungszeilen bearbeitet, oben links schließen, oben rechts sichern', 'Shot: drei Wahlräder nebeneinander statt einzelner Schritte', 'Point-and-Shoot: Die Nummer steht an erster Stelle', 'Point-and-Shoot: Belichtungszeit, Blende und Brennweite bleiben beim Umschalten gespeichert und erscheinen nur nicht in der App und im Export', 'Theme Nebel heißt jetzt Hell', 'Eigenes Theme als dritte Option, ohne Speichern mehrerer Layouts', 'Systemschrift statt eigener Schriften'],
+      removed: ['Hauptmenü und der Punkt „Erstellen“; neue Rollen legt das + unter Aktiv an', 'Themes Salbei und Nacht', 'Gespeicherte Farblayouts', 'Erklärungstext beim Point-and-Shoot-Schalter', 'Direktes Öffnen der Rolle, wenn nur eine aktiv ist']
+    },
+    en: {
+      added: ['Tab bar at the bottom with Active, Archive, Export and Settings', 'Simple Mode per roll: the shutter button saves number, time and location at once, everything else can be added later', 'Swipe rolls and folders to the left and delete them with the red bin', 'Dark theme with dark greys and orange'],
+      changed: ['Lists in Active and Archive like the alarm list: a tap opens the roll', 'Roll and shot are edited in one sheet with settings rows, close top left, save top right', 'Shot: three wheels side by side instead of single steps', 'Point-and-Shoot: the number comes first', 'Point-and-Shoot: shutter speed, aperture and focal length stay saved when switching and are only hidden in the app and in exports', 'The Mist theme is now called Light', 'Custom theme as a third option, without saving several layouts', 'System font instead of custom fonts'],
+      removed: ['Main menu and the “Create” entry; the + under Active creates new rolls', 'Sage and Night themes', 'Saved colour layouts', 'Explanation text at the Point-and-Shoot switch', 'Opening the roll directly when only one is active']
+    }
+  },
+  {
     v: '0.8', date: '2026-11-13',
     title: { de: 'Kacheln zum Verschieben, Menü per Halten, haptisches Feedback', en: 'Movable tiles, menu on hold, haptic feedback' },
     de: {
