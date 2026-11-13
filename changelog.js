@@ -6,6 +6,18 @@
 */
 window.CHANGELOG = [
   {
+    v: '0.11', date: '2026-11-13',
+    title: { de: 'Flüssigeres Wischen mit mehreren Aktionen, Shots als Karten, Schritt-Dialog zurück', en: 'Smoother swiping with several actions, shots as cards, step dialog is back' },
+    de: {
+      added: ['Wischen nach links zeigt mehrere runde Knöpfe: Bearbeiten, Löschen und Verschieben', 'Unter Aktiv verschiebt der dritte Knopf die Rolle ins Archiv, im Archiv führt er zum Export dieser Rolle', 'Shots in der Rollenansicht lassen sich wischen: Bearbeiten und Löschen'],
+      changed: ['Beim Wischen gleitet die Zeile mit dem Finger nach links aus der Karte, die Knöpfe blenden dabei weich ein', 'Shots stehen in der Rollenansicht als Zeilen in einer Karte, wie die Rollen', 'Ein neuer Shot wird wieder Schritt für Schritt abgefragt; beim Bearbeiten stehen alle Werte auf einer Seite']
+    },
+    en: {
+      added: ['Swiping left shows several round buttons: edit, delete and move', 'Under Active the third button moves the roll to the archive, in the archive it leads to the export of that roll', 'Shots in the roll view can be swiped: edit and delete'],
+      changed: ['While swiping the row glides left out of the card with your finger and the buttons fade in softly', 'Shots in the roll view are rows in a card, like the rolls', 'A new shot is asked step by step again; when editing, all values are on one page']
+    }
+  },
+  {
     v: '0.10', date: '2026-11-13',
     title: { de: 'Glas-Tab-Leiste, Papierkorb, Rollen als Karten', en: 'Glass tab bar, bin, rolls as cards' },
     de: {

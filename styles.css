@@ -559,3 +559,31 @@ button.line:active, .line-main:active { background: rgba(128, 128, 128, .14); }
 .line .line-folder svg { width: 22px; height: 22px; color: var(--text); opacity: 1; }
 .line-label.two b { font-size: 18px; }
 .group-note.lead { margin-top: 2px; }
+
+/* ---------- Wischen: Zeile gleitet nach links, Aktionen blenden ein ---------- */
+.srow { --p: 0; }
+.srow.open { --p: 1; }
+.srow.open .row-main { transform: translateX(calc(-1 * var(--w))); }
+.row-main { transition: transform .3s cubic-bezier(.25, 1, .4, 1); }
+.srow.swiping .row-main, .srow.swiping .row-acts, .srow.swiping .row-act { transition: none; }
+.row-acts { position: absolute; right: 0; top: 0; bottom: 0; width: var(--w); display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 10px; opacity: var(--p); transition: opacity .25s; }
+.row-act { width: 64px; display: grid; justify-items: center; gap: 3px; font-size: 11px; line-height: 1.1; color: var(--muted); text-align: center; transform: scale(calc(.5 + .5 * var(--p))); transition: transform .3s cubic-bezier(.3, 1.4, .5, 1); }
+.row-act i { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-style: normal; }
+.row-act svg { width: 20px; height: 20px; }
+.row-act.edit i { background: #5856D6; }
+.row-act.del i { background: var(--red); }
+.row-act.move i { background: #8E8E93; }
+.row-act:active { opacity: .6; }
+.srow.dragging .row-acts { display: none; }
+
+/* ---------- Shots als Zeilen in einer Karte ---------- */
+.group .shot { padding: 10px 16px; border-top: 0; box-shadow: inset 0 1px 0 var(--line); }
+.group > .srow:first-child .shot, .group > .shot:first-child { box-shadow: none; }
+.group .shot.sub { padding-left: 34px; }
+.shot-no { font-weight: 600; font-size: 22px; }
+
+/* ---------- Schritt-für-Schritt-Dialog ---------- */
+.big-value .line-value { display: block; margin: 0; color: inherit; white-space: normal; text-align: center; }
+.step-box .group { margin-bottom: 0; }
+.step-box .group-note { margin: 0; text-align: center; }
+.flash-seg svg { width: 30px; height: 30px; color: inherit; opacity: 1; }

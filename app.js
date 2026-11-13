@@ -6,7 +6,7 @@
     hell: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] },
     dunkel: { bar: '#161617', colors: ['#161617', '#2A2A2D', '#3D3D42', '#9C9BA1', '#FF7A3D'], pdf: [224, 98, 40] }
   };
-  const VERSION = '0.10';
+  const VERSION = '0.11';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
@@ -51,6 +51,7 @@
     map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
     bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    pencil: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     chev: '<path d="M9 6l6 6-6 6"/>',
     tabActive: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/>',
@@ -283,7 +284,7 @@
   // ------------------------------------------------------------ Seiten mit Tab-Leiste (statt Hauptmenü)
   const home = document.getElementById('home');
   const TABS = [['active', 'tabActive'], ['archive', 'tabArchive'], ['export', 'tabExport'], ['settings', 'tabSettings']];
-  let page = null, tabName = 'active';
+  let page = null, tabName = 'active', exportPre = null;
   const tabbar = h('nav', { class: 'tabbar' });
   // Glas-Marker, der zwischen den Tabs gleitet und beim Drücken dem Finger folgt
   const tabLens = h('div', { class: 'tab-lens' });
@@ -357,7 +358,7 @@
     home.replaceChildren(h('header', { class: 'page-head' }, left, h('div', { class: 'page-brand' }, h('b', null, 'Film_Log'), h('span', { 'data-version': '' }, 'Alpha ' + VERSION)), right), title, body, foot, tabbar);
     renderTabbar();
     if (name === 'active' || name === 'archive') openList(name, page);
-    else if (name === 'export') openExport(null, page);
+    else if (name === 'export') { openExport(exportPre, page); exportPre = null; }
     else openSettings(page);
   }
 
@@ -518,21 +519,28 @@
       s.thumb ? h('img', { class: 'shot-thumb', src: s.thumb, alt: '' }) : h('span'));
   }
 
-  // Zeile, die sich nach links wischen lässt und dann einen runden Papierkorb freigibt
-  function swipeRow(row, key, onDelete) {
+  // Zeile, die sich nach links wischen lässt; dahinter blenden runde Aktionsknöpfe ein
+  const act = (cls, ic, label, run) => ({ cls, icon: ic, label, run });
+  const actEdit = fn => act('edit', 'pencil', t('actEdit'), fn);
+  const actDel = fn => act('del', 'trash', t('delete'), fn);
+  function swipeRow(row, key, actions) {
     row.classList.add('row-main');
-    return h('div', { class: 'srow', 'data-drag': key },
-      h('button', { class: 'row-trash', 'aria-label': t('delete'), 'data-act': 'trash', onclick: e => { e.stopPropagation(); onDelete(); } }, icon('trash')), row);
+    const el = h('div', { class: 'srow', 'data-drag': key },
+      h('div', { class: 'row-acts' }, actions.map(a => h('button', { class: 'row-act ' + a.cls, 'data-act': 'swipe-' + a.cls, onclick: e => { e.stopPropagation(); el.classList.remove('open'); a.run(); } },
+        h('i', null, icon(a.icon)), h('span', null, a.label)))),
+      row);
+    el.style.setProperty('--w', (actions.length * 70 + 14) + 'px');
+    return el;
   }
   function swipeable(box) {
-    const W = 84;
     let sw = null;
     const closeAll = except => box.querySelectorAll('.srow.open').forEach(e => { if (e !== except) e.classList.remove('open'); });
     box.addEventListener('pointerdown', e => {
       const el = e.target.closest('.srow');
       closeAll(el);
-      if (!el || e.target.closest('.row-trash')) return;
-      sw = { el, main: el.querySelector('.row-main'), x: e.clientX, y: e.clientY, id: e.pointerId, on: false, base: el.classList.contains('open') ? -W : 0, pos: 0 };
+      if (!el || e.target.closest('.row-acts')) return;
+      const W = parseFloat(el.style.getPropertyValue('--w')) || 84;
+      sw = { el, W, main: el.querySelector('.row-main'), x: e.clientX, y: e.clientY, id: e.pointerId, on: false, base: el.classList.contains('open') ? -W : 0, pos: 0 };
     });
     box.addEventListener('pointermove', e => {
       if (!sw || e.pointerId !== sw.id) return;
@@ -541,20 +549,25 @@
         if (sw.el.classList.contains('dragging') || Math.abs(dy) > 10) { sw = null; return; }
         if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
         sw.on = true;
-        sw.main.style.transition = 'none';
+        sw.el.classList.add('swiping');
         try { box.setPointerCapture(sw.id); } catch (err) {}
       }
-      sw.pos = Math.max(-W - 30, Math.min(0, sw.base + dx));
-      sw.main.style.transform = 'translateX(' + sw.pos + 'px)';
+      // die Zeile folgt dem Finger nach links aus der Karte heraus; hinter den Knöpfen wird der Zug schwerer
+      let pos = Math.min(0, sw.base + dx);
+      if (pos < -sw.W) pos = -sw.W - (-pos - sw.W) * 0.4;
+      sw.pos = pos;
+      sw.main.style.transform = 'translateX(' + pos + 'px)';
+      sw.el.style.setProperty('--p', Math.min(1, -pos / sw.W).toFixed(3));
     });
     const up = e => {
       if (!sw || e.pointerId !== sw.id) return;
       const s = sw;
       sw = null;
       if (!s.on) return;
-      s.main.style.transition = '';
+      s.el.classList.remove('swiping');
       s.main.style.transform = '';
-      s.el.classList.toggle('open', s.pos < -W / 2);
+      s.el.style.removeProperty('--p');
+      s.el.classList.toggle('open', s.pos < -s.W * 0.4);
       s.el._noClickUntil = Date.now() + 400;
     };
     box.addEventListener('pointerup', up);
@@ -562,7 +575,7 @@
     box.addEventListener('touchmove', e => { if (sw && sw.on) e.preventDefault(); }, { passive: false });
     box.addEventListener('click', e => {
       const el = e.target.closest('.srow');
-      if (el && el.classList.contains('open') && !e.target.closest('.row-trash')) { el.classList.remove('open'); e.stopPropagation(); e.preventDefault(); }
+      if (el && el.classList.contains('open') && !e.target.closest('.row-acts')) { el.classList.remove('open'); e.stopPropagation(); e.preventDefault(); }
     }, true);
   }
   async function removeFolder(id) {
@@ -570,7 +583,26 @@
     await DB.del('folders', id);
     S.folders = S.folders.filter(x => x.id !== id);
   }
-  const rollLine = r => swipeRow(rollRow(r, () => openRoll(r.id)), 'r:' + r.id, async () => { await trashRoll(r.id); refreshAll(); toast(t('movedToTrash')); });
+  function rollLine(r) {
+    const move = r.archived
+      ? act('move', 'tabExport', t('export'), () => { stack.slice().forEach(s => s.close()); exportPre = r.id; showTab('export'); })
+      : act('move', 'tabArchive', t('archive'), async () => { r.archived = true; await DB.put('rolls', r); refreshAll(); toast(t('archived')); });
+    return swipeRow(rollRow(r, () => openRoll(r.id)), 'r:' + r.id, [
+      actEdit(() => openRollEdit(r.id)),
+      actDel(async () => { await trashRoll(r.id); refreshAll(); toast(t('movedToTrash')); }),
+      move]);
+  }
+  async function removeShotAsk(s) {
+    const ok = await ask(t('askDeleteShot', { n: noLabel(s.no, s.sub) }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+    if (!ok) return;
+    await dropMedia(s.photoId);
+    await dropMedia(s.audioId);
+    await DB.del('shots', s.id);
+    S.shots = S.shots.filter(x => x.id !== s.id);
+    refreshAll();
+    toast(t('deleted'));
+  }
+  const shotLine = s => swipeRow(shotRow(s), 's:' + s.id, [actEdit(() => openShot(s.rollId, s.id)), actDel(() => removeShotAsk(s))]);
 
   function openList(kind, host) {
     const sheet = host || openSheet({ title: t(kind) });
@@ -608,7 +640,7 @@
         round('add-folder', 'plus', t('newFolder'), addMenu)));
       const items = archiveItems();
       const kids = items.map(it => it.folder
-        ? swipeRow(folderRow(it.obj, () => openFolder(it.obj.id)), it.key, async () => { await removeFolder(it.obj.id); refreshAll(); toast(t('deleted')); })
+        ? swipeRow(folderRow(it.obj, () => openFolder(it.obj.id)), it.key, [actEdit(() => folderMenu(it.obj.id)), actDel(async () => { await removeFolder(it.obj.id); refreshAll(); toast(t('deleted')); })])
         : rollLine(it.obj));
       if (kids.length) sheet.body.replaceChildren(group(kids), h('p', { class: 'hint drag-hint' }, t('dragHint')));
       else sheet.body.replaceChildren(h('p', { class: 'empty' }, t('emptyArchive')));
@@ -706,6 +738,7 @@
     const info = h('p', { class: 'roll-info' });
     const list = h('div', { class: 'shots' });
     sheet.body.append(heading, subline, tagLine, info, list);
+    swipeable(list);
 
     sheet.render = () => {
       if (!rollById(id)) { sheet.close(); return; }
@@ -716,7 +749,7 @@
       subline.textContent = [roll.camera, (filmLabel(roll) + (roll.push ? ' (' + fmtPush(roll.push) + ')' : '')).trim(), roll.frames + ' Exp.', roll.pns ? 'P&S' : '', roll.simple ? 'Simple' : ''].filter(Boolean).join(' / ');
       const since = activeSince(id);
       info.textContent = since != null ? t('activeSince', { d: fmtDate(since) }) : t('noShotsYet');
-      list.replaceChildren(...shots.map(s => shotRow(s)));
+      list.replaceChildren(...(shots.length ? [group(shots.map(shotLine))] : []));
       sheet.foot.className = 'sheet-foot center';
       if (roll.archived) sheet.foot.replaceChildren();
       else if (!sheet.foot.firstChild) sheet.foot.append(h('button', { class: 'shutter', 'aria-label': t('newShot'), 'data-act': 'shutter', onclick: () => { haptic(); if (roll.simple) quickShot(roll); else openShot(id, null); } }));
@@ -881,7 +914,7 @@
     const nn = v => (v == null ? null : v);
     // Point-and-Shoot: Zeit, Blende und Brennweite werden nicht abgefragt, vorhandene Werte bleiben aber gespeichert
     const d = isNew
-      ? { no: nextNo(rollId), shutter: pns ? null : last.shutter, aperture: pns ? null : last.aperture, focal: pns ? null : last.focal, flash: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null }
+      ? { no: nextNo(rollId), shutter: null, aperture: null, focal: null, flash: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null }
       : { no: shot.no, shutter: nn(shot.shutter), aperture: nn(shot.aperture), focal: nn(shot.focal), flash: shot.flash == null ? null : !!shot.flash, lat: nn(shot.lat), lon: nn(shot.lon), acc: nn(shot.acc), date: nn(shot.date), note: shot.note || '', audioId: shot.audioId || null, photoId: shot.photoId || null, thumb: shot.thumb || null };
     // bei einem neuen Shot zählt der automatisch ermittelte Standort nicht als Änderung
     const snap = () => JSON.stringify(isNew ? Object.assign({}, d, { lat: 0, lon: 0, acc: 0 }) : d);
@@ -895,7 +928,7 @@
     const sheet = openSheet({
       beforeClose: async () => {
         if (saving) return true;
-        if (snap() === orig && !newPhoto && !newAudio && !rec) return true;
+        if (snap() === orig && !newPhoto && !newAudio && !rec && !(isNew && wstep > 0)) return true;
         const a = await askSave(t('askSaveShot'));
         if (a === 'save') { await finish(); return false; }
         return a === 'discard';
@@ -908,7 +941,6 @@
         if (newAudioUrl) URL.revokeObjectURL(newAudioUrl);
       }
     });
-    sheet.setRight(h('button', { class: 'icon-btn ok', 'data-act': 'finish', 'aria-label': t('save'), onclick: () => { haptic(); finish(); } }, icon('check')));
 
     const predictedSub = () => {
       if (!isNew && shot.no === d.no) return shot.sub;
@@ -1056,7 +1088,7 @@
         d.photoId = null;
         d.thumb = newPhoto.thumb;
       } catch (err) { toast(t('photoFail')); }
-      if (!sheet.closed) updateRef();
+      if (!sheet.closed) { updateRef(); if (onRef) onRef(); }
     }
     const camIn = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true, 'data-in': 'camera', onchange: onPick });
     const libIn = h('input', { type: 'file', accept: 'image/*', hidden: true, 'data-in': 'library', onchange: onPick });
@@ -1118,7 +1150,94 @@
       toast(t('deleted'));
     }
 
-    // --- Aufbau
+    // --- Neuer Shot: Schritt für Schritt
+    let wstep = 0, onRef = null;
+    function buildWizard() {
+      const STEPS = pns ? ['no', 'flash', 'loc', 'date', 'notes', 'ref'] : ['no', 'shutter', 'aperture', 'focal', 'flash', 'loc', 'date', 'notes', 'ref'];
+      const wv = { shutter: last.shutter, aperture: last.aperture, focal: last.focal, flash: !!last.flash };
+      const lists = { shutter: [SHUTTERS, v => v], aperture: [APERTURES, fmtAperture], focal: [FOCALS, fmtFocal] };
+      sheet.body.classList.add('steps');
+      sheet.el.append(camIn, libIn);
+      const note = h('textarea', { class: 'input', placeholder: t('notePh'), 'aria-label': t('st_notes'), oninput: e => { d.note = e.target.value; } });
+      const content = key => {
+        if (key === 'no') {
+          return h('div', { class: 'step-box' },
+            h('div', { class: 'stepper' },
+              h('button', { 'aria-label': '−', 'data-act': 'no-minus', onclick: () => { haptic(); d.no = Math.max(0, d.no - 1); updateNo(); render(); } }, '−'),
+              h('div', { class: 'bignum', 'data-no': '' }, pad2(d.no)),
+              h('button', { 'aria-label': '+', 'data-act': 'no-plus', onclick: () => { haptic(); d.no++; updateNo(); render(); } }, '+')),
+            noNote);
+        }
+        if (lists[key]) {
+          const w = makeWheel(lists[key][0], lists[key][1], wv[key], v => { wv[key] = v; });
+          w.dataset.wheel = key;
+          return w;
+        }
+        if (key === 'flash') {
+          return h('div', { class: 'seg flash-seg' }, [[false, 'flashOff'], [true, 'flashOn']].map(([v, k]) =>
+            h('button', { class: wv.flash === v ? 'on' : '', 'data-flash': String(v), onclick: () => { haptic(); wv.flash = v; render(); } }, v ? icon('bolt') : null, t(k))));
+        }
+        if (key === 'loc') {
+          return h('div', { class: 'step-box' },
+            h('div', { class: 'big-value' }, locValue), locNote,
+            h('button', { class: 'btn', onclick: () => { haptic(); locate(); } }, icon('pin'), t('locRetry')),
+            h('button', { class: 'btn', 'data-act': 'pick-map', onclick: () => openPicker(d.lat != null ? { lat: d.lat, lon: d.lon, z: 16 } : lastPlace(rollId), c => {
+              geo.token++; geo.state = 'ok';
+              d.lat = c.lat; d.lon = c.lon; d.acc = null;
+              updateLoc();
+            }) }, icon('map'), t('pickOnMap')));
+        }
+        if (key === 'date') {
+          return h('input', { class: 'date-input', type: 'datetime-local', value: toLocalInput(d.date), 'data-field': 'date', 'aria-label': t('st_date'), oninput: e => { const v = e.target.value; d.date = v ? new Date(v).getTime() : null; } });
+        }
+        if (key === 'notes') {
+          note.value = d.note;
+          return h('div', { class: 'step-box' }, note, group(audioBox));
+        }
+        if (hasPhoto()) {
+          const img = h('img', { class: 'photo-preview', alt: '' });
+          if (newPhotoUrl) img.src = newPhotoUrl;
+          else mediaUrl(d.photoId).then(u => { if (u) img.src = u; });
+          return h('div', { class: 'step-box' }, img,
+            h('button', { class: 'btn', 'data-act': 'photo-remove', onclick: () => { newPhoto = null; d.photoId = null; d.thumb = null; render(); } }, icon('trash'), t('removePhoto')));
+        }
+        return h('div', { class: 'step-box' },
+          h('button', { class: 'btn', onclick: () => camIn.click() }, icon('camera'), t('takePhoto')),
+          h('button', { class: 'btn', onclick: () => libIn.click() }, icon('image'), t('pickPhoto')));
+      };
+      const commit = key => { if (lists[key]) d[key] = wv[key]; else if (key === 'flash') d.flash = wv.flash; };
+      const skip = key => {
+        if (lists[key] || key === 'flash') d[key] = null;
+        else if (key === 'loc') { geo.token++; geo.state = 'idle'; d.lat = d.lon = d.acc = null; updateLoc(); }
+        else if (key === 'date') d.date = null;
+        else if (key === 'notes') { stopRec(true); if (player) { player.pause(); player = null; } d.note = ''; newAudio = null; d.audioId = null; renderAudio(); }
+        else { newPhoto = null; d.photoId = null; d.thumb = null; }
+      };
+      const go = n => {
+        if (STEPS[wstep] === 'notes') { stopRec(false); if (player) { player.pause(); player = null; } }
+        if (n >= STEPS.length) { finish(); return; }
+        wstep = n;
+        render();
+      };
+      function render() {
+        const key = STEPS[wstep], c = content(key), lastStep = wstep === STEPS.length - 1;
+        sheet.body.replaceChildren(
+          h('div', { class: 'progress', 'aria-hidden': 'true' }, STEPS.map((_, i) => h('i', { class: i === wstep ? 'on' : i < wstep ? 'done' : '' }))),
+          h('h2', { class: 'step-title' }, t('st_' + key)), c);
+        if (key !== 'notes') c.classList.add('low');
+        if (c.sync) c.sync();
+        sheet.foot.className = 'sheet-foot three';
+        sheet.foot.replaceChildren(
+          h('button', { class: 'btn ghost' + (wstep === 0 ? ' invisible' : ''), 'data-act': 'back', onclick: () => go(wstep - 1) }, t('back')),
+          h('button', { class: 'btn ghost' + (key === 'no' ? ' invisible' : ''), 'data-act': 'skip', onclick: () => { skip(key); go(wstep + 1); } }, t('skip')),
+          h('button', { class: 'btn primary', 'data-act': lastStep ? 'finish' : 'next', onclick: () => { haptic(); commit(key); go(wstep + 1); } }, t(lastStep ? 'finish' : 'next')));
+      }
+      onRef = () => { if (STEPS[wstep] === 'ref') render(); };
+      render();
+    }
+
+    // --- Shot bearbeiten: alles auf einer Seite
+    function buildFull() {
     const wheels = pns ? [] : [['shutter', SHUTTERS, v => v], ['aperture', APERTURES, fmtAperture], ['focal', FOCALS, fmtFocal]].map(([k, vals, f]) => {
       const list = [null].concat(vals);
       if (d[k] != null && !list.includes(d[k])) list.splice(1, 0, d[k]);
@@ -1148,6 +1267,12 @@
       camIn, libIn
     ].filter(Boolean));
     wheels.forEach(w => w.sync());
+    }
+    if (isNew) buildWizard();
+    else {
+      sheet.setRight(h('button', { class: 'icon-btn ok', 'data-act': 'finish', 'aria-label': t('save'), onclick: () => { haptic(); finish(); } }, icon('check')));
+      buildFull();
+    }
     if (d.audioId) mediaUrl(d.audioId);
     updateNo(); updateLoc(); updateRef(); renderAudio();
     if (isNew) locate();
@@ -1353,7 +1478,7 @@
       const section = (key, n) => h('p', { class: 'section-label' }, t(key) + ' (' + n + ')');
       if (r.folders.length) { kids.push(section('folders', r.folders.length)); kids.push(group(r.folders.map(f => folderRow(f, () => openFolder(f.id))))); }
       if (r.rolls.length) { kids.push(section('rolls', r.rolls.length)); kids.push(group(r.rolls.map(x => rollRow(x, () => openRoll(x.id))))); }
-      if (r.shots.length) { kids.push(section('photos', r.shots.length)); kids.push(h('div', { class: 'shots plain' }, r.shots.slice(0, 300).map(s => shotRow(s, true)))); }
+      if (r.shots.length) { kids.push(section('photos', r.shots.length)); kids.push(group(r.shots.slice(0, 300).map(s => shotRow(s, true)))); }
       sheet.body.replaceChildren(...kids);
     };
     sheet.render();
@@ -1929,7 +2054,7 @@
           kids.push(h('p', { class: 'section-label' }, t(key)));
           kids.push(group(rolls.sort((a, b) => b.createdAt - a.createdAt).map(r => swipeRow(
             rollRow(r, () => { sel = r.id; sheet.render(); }, sel === r.id ? icon('check') : h('span', { class: 'line-gap' }), ' pick' + (sel === r.id ? ' on' : '')),
-            'r:' + r.id, async () => { await trashRoll(r.id); refreshAll(); toast(t('movedToTrash')); }))));
+            'r:' + r.id, [actEdit(() => openRollEdit(r.id)), actDel(async () => { await trashRoll(r.id); refreshAll(); toast(t('movedToTrash')); })]))));
         });
       }
       const top = sheet.body.scrollTop;
