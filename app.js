@@ -6,7 +6,7 @@
     hell: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] },
     dunkel: { bar: '#161617', colors: ['#161617', '#2A2A2D', '#3D3D42', '#9C9BA1', '#FF7A3D'], pdf: [224, 98, 40] }
   };
-  const VERSION = '0.9';
+  const VERSION = '0.10';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
@@ -15,7 +15,7 @@
   const LAST = STEPS.length - 1;
   const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note', 'pns', 'simple'];
 
-  const S = { rolls: [], shots: [], folders: [], tags: [], settings: { theme: 'hell', lang: 'de' } };
+  const S = { rolls: [], trash: [], shots: [], folders: [], tags: [], settings: { theme: 'hell', lang: 'de' } };
 
   // ------------------------------------------------------------ Helfer
   function h(tag, attrs, ...kids) {
@@ -285,9 +285,59 @@
   const TABS = [['active', 'tabActive'], ['archive', 'tabArchive'], ['export', 'tabExport'], ['settings', 'tabSettings']];
   let page = null, tabName = 'active';
   const tabbar = h('nav', { class: 'tabbar' });
+  // Glas-Marker, der zwischen den Tabs gleitet und beim Drücken dem Finger folgt
+  const tabLens = h('div', { class: 'tab-lens' });
+  const tabBtns = TABS.map(([key, ic]) => h('button', { class: 'tab', 'data-nav': key, onclick: e => { if (e.detail === 0 && key !== tabName) showTab(key); } }, icon(ic), h('span', { class: 'tab-label' })));
+  tabbar.append(tabLens, ...tabBtns);
+  const moveLens = (x, w, lift) => { tabLens.style.width = w + 'px'; tabLens.style.transform = 'translateX(' + x + 'px)' + (lift ? ' scale(1.12)' : ''); };
+  function placeLens() {
+    const b = tabBtns[TABS.findIndex(x => x[0] === tabName)];
+    if (b && b.offsetWidth) moveLens(b.offsetLeft, b.offsetWidth, false);
+  }
+  function followLens(clientX) {
+    const r = tabbar.getBoundingClientRect(), w = tabBtns[0].offsetWidth;
+    const min = tabBtns[0].offsetLeft, max = tabBtns[tabBtns.length - 1].offsetLeft;
+    const x = Math.max(min, Math.min(max, clientX - r.left - w / 2));
+    moveLens(x, w, true);
+    const idx = Math.round((x - min) / ((max - min) / (tabBtns.length - 1)));
+    tabBtns.forEach((b, i) => b.classList.toggle('near', i === idx));
+    return idx;
+  }
+  let lensDrag = null;
+  tabbar.addEventListener('pointerdown', e => {
+    lensDrag = { id: e.pointerId, idx: 0 };
+    try { tabbar.setPointerCapture(e.pointerId); } catch (err) {}
+    tabbar.classList.add('pressing');
+    lensDrag.idx = followLens(e.clientX);
+  });
+  tabbar.addEventListener('pointermove', e => {
+    if (!lensDrag || e.pointerId !== lensDrag.id) return;
+    const idx = followLens(e.clientX);
+    if (idx !== lensDrag.idx) { lensDrag.idx = idx; haptic(); }
+  });
+  const lensEnd = (e, commit) => {
+    if (!lensDrag || e.pointerId !== lensDrag.id) return;
+    const idx = lensDrag.idx;
+    lensDrag = null;
+    tabbar.classList.remove('pressing');
+    tabBtns.forEach(b => b.classList.remove('near'));
+    if (commit && TABS[idx][0] !== tabName) { haptic(); showTab(TABS[idx][0]); }
+    else placeLens();
+  };
+  tabbar.addEventListener('pointerup', e => lensEnd(e, true));
+  tabbar.addEventListener('pointercancel', e => lensEnd(e, false));
+  tabbar.addEventListener('touchmove', e => { if (lensDrag) e.preventDefault(); }, { passive: false });
+  window.addEventListener('resize', placeLens);
 
   function renderTabbar() {
-    tabbar.replaceChildren(...TABS.map(([key, ic]) => h('button', { class: 'tab' + (tabName === key ? ' on' : ''), 'data-nav': key, 'aria-current': tabName === key ? 'page' : null, onclick: () => showTab(key) }, icon(ic), h('span', null, t(key)))));
+    tabBtns.forEach((b, i) => {
+      const on = TABS[i][0] === tabName;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-current', on ? 'page' : 'false');
+      b.lastChild.textContent = t(TABS[i][0]);
+    });
+    placeLens();
+    requestAnimationFrame(() => tabbar.classList.add('ready'));
   }
 
   // Eine Seite bietet dieselben Anschlüsse wie ein Fenster, damit Listen, Export und Einstellungen beides bedienen können
@@ -304,7 +354,7 @@
       setRight: v => right.replaceChildren(...(v ? [v] : [])),
       close: () => {}
     };
-    home.replaceChildren(h('header', { class: 'page-head' }, left, right), title, body, foot, tabbar);
+    home.replaceChildren(h('header', { class: 'page-head' }, left, h('div', { class: 'page-brand' }, h('b', null, 'Film_Log'), h('span', { 'data-version': '' }, 'Alpha ' + VERSION)), right), title, body, foot, tabbar);
     renderTabbar();
     if (name === 'active' || name === 'archive') openList(name, page);
     else if (name === 'export') openExport(null, page);
@@ -412,14 +462,11 @@
     sheet.body.append(rollForm(d));
     if (roll) sheet.body.append(group(h('button', {
       class: 'line danger', 'data-act': 'roll-delete', onclick: async () => {
-        const ok = await ask(t('askDeleteRoll', { t: roll.title }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
-        if (!ok) return;
         saving = true;
-        await deleteRoll(roll.id);
+        await trashRoll(roll.id);
         sheet.close();
-        stack.slice().forEach(s => { if (s.rollId === roll.id) s.close(); });
         refreshAll();
-        toast(t('deleted'));
+        toast(t('movedToTrash'));
       }
     }, t('moreDelete'))));
   }
@@ -433,13 +480,11 @@
     if (new RegExp('(^|\\D)' + iso + '(\\D|$)').test(f)) return f;
     return f ? f + ' ' + iso : 'ISO ' + iso;
   }
-  function rollRow(r, onTap, extra) {
+  function rollRow(r, onTap, side, cls) {
     const sub = [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.', r.pns ? 'P&S' : '', r.simple ? 'Simple' : ''].filter(Boolean).join(', ');
-    return h('button', { class: 'row' + (extra || ''), 'data-roll': r.id, onclick: onTap },
-      h('span', { class: 'row-title' }, r.title),
-      h('span', { class: 'row-side' }),
-      h('span', { class: 'row-sub' }, sub),
-      tagChips(r.tags));
+    return h('button', { class: 'line' + (cls || ''), 'data-roll': r.id, onclick: onTap },
+      h('span', { class: 'line-label two' }, h('b', null, r.title), h('small', null, sub), tagChips(r.tags)),
+      side === undefined ? icon('chev') : side);
   }
 
   const folderById = id => S.folders.find(f => f.id === id);
@@ -447,11 +492,10 @@
   const shotsOf = rolls => rolls.flatMap(r => rollShots(r.id).reverse());
   function folderRow(f, onTap) {
     const n = S.rolls.filter(r => r.archived && r.folderId === f.id).length;
-    return h('button', { class: 'row', 'data-folder': f.name, onclick: onTap },
-      h('span', { class: 'row-title with-icon' }, icon('folder'), h('span', null, f.name)),
-      h('span', { class: 'row-side' }),
-      h('span', { class: 'row-sub' }, t('nRolls')(n)),
-      tagChips(f.tags));
+    return h('button', { class: 'line', 'data-folder': f.name, onclick: onTap },
+      h('span', { class: 'line-folder' }, icon('folder')),
+      h('span', { class: 'line-label two' }, h('b', null, f.name), h('small', null, t('nRolls')(n)), tagChips(f.tags)),
+      icon('chev'));
   }
   function shotRow(s, withRoll) {
     const val = (v, f) => h('span', { class: v == null ? 'nil' : null }, v == null ? '–' : f(v));
@@ -526,7 +570,7 @@
     await DB.del('folders', id);
     S.folders = S.folders.filter(x => x.id !== id);
   }
-  const rollLine = r => swipeRow(rollRow(r, () => openRoll(r.id)), 'r:' + r.id, async () => { await deleteRoll(r.id); refreshAll(); toast(t('deleted')); });
+  const rollLine = r => swipeRow(rollRow(r, () => openRoll(r.id)), 'r:' + r.id, async () => { await trashRoll(r.id); refreshAll(); toast(t('movedToTrash')); });
 
   function openList(kind, host) {
     const sheet = host || openSheet({ title: t(kind) });
@@ -554,7 +598,7 @@
         sheet.setRight(round('add', 'plus', t('newRoll'), () => openRollEdit()));
         const act = activeItems();
         if (!act.length) sheet.body.replaceChildren(h('p', { class: 'empty' }, t('emptyActive')));
-        else sheet.body.replaceChildren(...act.map(it => rollLine(it.obj)), h('p', { class: 'hint drag-hint' }, t('dragHint')));
+        else sheet.body.replaceChildren(group(act.map(it => rollLine(it.obj))), h('p', { class: 'hint drag-hint' }, t('dragHint')));
         return;
       }
       const rolls = archivedRolls();
@@ -566,9 +610,8 @@
       const kids = items.map(it => it.folder
         ? swipeRow(folderRow(it.obj, () => openFolder(it.obj.id)), it.key, async () => { await removeFolder(it.obj.id); refreshAll(); toast(t('deleted')); })
         : rollLine(it.obj));
-      if (items.length) kids.push(h('p', { class: 'hint drag-hint' }, t('dragHint')));
-      else kids.push(h('p', { class: 'empty' }, t('emptyArchive')));
-      sheet.body.replaceChildren(...kids);
+      if (kids.length) sheet.body.replaceChildren(group(kids), h('p', { class: 'hint drag-hint' }, t('dragHint')));
+      else sheet.body.replaceChildren(h('p', { class: 'empty' }, t('emptyArchive')));
     };
     sheet.render();
   }
@@ -604,11 +647,10 @@
       refreshAll();
       toast(t(a === 'archive' ? 'archived' : 'reactivated'));
     } else if (a === 'delete') {
-      const ok = await ask(t('askDeleteRoll', { t: roll.title }), [
-        { label: t('delete'), value: true, kind: 'primary' },
-        { label: t('cancel'), value: null, kind: 'ghost' }
-      ]);
-      if (ok) { await deleteRoll(id); if (ctx.close) ctx.close(); refreshAll(); toast(t('deleted')); }
+      await trashRoll(id);
+      if (ctx.close) ctx.close();
+      refreshAll();
+      toast(t('movedToTrash'));
     }
   }
 
@@ -714,6 +756,52 @@
     await DB.del('rolls', id);
     S.shots = S.shots.filter(s => s.rollId !== id);
     S.rolls = S.rolls.filter(r => r.id !== id);
+    S.trash = S.trash.filter(r => r.id !== id);
+  }
+
+  // Papierkorb: gelöschte Rollen bleiben 30 Tage erhalten und lassen sich so lange wiederherstellen
+  const DAY = 86400000, TRASH_DAYS = 30;
+  async function trashRoll(id) {
+    const r = rollById(id);
+    if (!r) return;
+    r.deletedAt = Date.now();
+    await DB.put('rolls', r);
+    S.rolls = S.rolls.filter(x => x !== r);
+    S.trash.push(r);
+    stack.slice().forEach(s => { if (s.rollId === id) s.close(); });
+  }
+  async function restoreRoll(r) {
+    delete r.deletedAt;
+    await DB.put('rolls', r);
+    S.trash = S.trash.filter(x => x !== r);
+    S.rolls.push(r);
+  }
+  function openTrash() {
+    const sheet = openSheet({ title: t('trash') });
+    sheet.render = () => {
+      sheet.setTitle(t('trash'));
+      const list = S.trash.slice().sort((a, b) => b.deletedAt - a.deletedAt);
+      sheet.body.replaceChildren(...[
+        h('p', { class: 'group-note lead' }, t('trashHint')),
+        list.length ? group(list.map(r => h('button', {
+          class: 'line', 'data-trash': r.title, onclick: async () => {
+            const a = await ask(r.title, [{ label: t('putBack'), value: 'back', kind: 'primary' }, { label: t('purge'), value: 'purge', kind: 'outline' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+            if (a === 'back') { await restoreRoll(r); refreshAll(); toast(t('putBackDone')); }
+            else if (a === 'purge') { await deleteRoll(r.id); refreshAll(); toast(t('deleted')); }
+          }
+        }, h('span', { class: 'line-label two' }, h('b', null, r.title), h('small', null, t('trashDays')(Math.max(1, Math.ceil((r.deletedAt + TRASH_DAYS * DAY - Date.now()) / DAY))))), icon('chev')))) : h('p', { class: 'empty' }, t('trashEmpty')),
+        list.length ? group(h('button', {
+          class: 'line danger', 'data-act': 'trash-empty', onclick: async () => {
+            const ok = await ask(t('askEmptyTrash'), [{ label: t('emptyTrash'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+            if (!ok) return;
+            for (const r of S.trash.slice()) await deleteRoll(r.id);
+            refreshAll();
+            toast(t('deleted'));
+          }
+        }, t('emptyTrash'))) : null
+      ].filter(Boolean));
+    };
+    sheet.render();
   }
 
   async function checkFull(roll) {
@@ -1170,7 +1258,7 @@
       const chips = tagChips(f.tags);
       sheet.body.replaceChildren(...[
         chips ? h('div', { class: 'tags-block' }, chips) : null,
-        ...(rolls.length ? rolls.map(rollLine) : [h('p', { class: 'empty' }, t('emptyFolder'))])
+        ...(rolls.length ? [group(rolls.map(rollLine))] : [h('p', { class: 'empty' }, t('emptyFolder'))])
       ].filter(Boolean));
     };
     sheet.render();
@@ -1263,8 +1351,8 @@
       if (!r.folders.length && !r.rolls.length && !r.shots.length) kids.push(h('p', { class: 'empty' }, t('noHits')));
       if (r.shots.some(s => s.lat != null)) kids.push(h('button', { class: 'btn', 'data-act': 'results-map', onclick: () => openMap(t('results'), r.shots) }, icon('map'), t('showOnMap')));
       const section = (key, n) => h('p', { class: 'section-label' }, t(key) + ' (' + n + ')');
-      if (r.folders.length) { kids.push(section('folders', r.folders.length)); r.folders.forEach(f => kids.push(folderRow(f, () => openFolder(f.id)))); }
-      if (r.rolls.length) { kids.push(section('rolls', r.rolls.length)); r.rolls.forEach(x => kids.push(rollRow(x, () => openRoll(x.id)))); }
+      if (r.folders.length) { kids.push(section('folders', r.folders.length)); kids.push(group(r.folders.map(f => folderRow(f, () => openFolder(f.id))))); }
+      if (r.rolls.length) { kids.push(section('rolls', r.rolls.length)); kids.push(group(r.rolls.map(x => rollRow(x, () => openRoll(x.id))))); }
       if (r.shots.length) { kids.push(section('photos', r.shots.length)); kids.push(h('div', { class: 'shots plain' }, r.shots.slice(0, 300).map(s => shotRow(s, true)))); }
       sheet.body.replaceChildren(...kids);
     };
@@ -1802,6 +1890,7 @@
   function openExport(preId, host) {
     let sel = preId || null, format = 'pdf', busy = false;
     const sheet = host || openSheet({ title: t('export') });
+    swipeable(sheet.body);
     const go = h('button', { class: 'btn primary', 'data-act': 'export', onclick: run });
     sheet.foot.replaceChildren(go);
 
@@ -1838,9 +1927,9 @@
         groups.forEach(([key, rolls]) => {
           if (!rolls.length) return;
           kids.push(h('p', { class: 'section-label' }, t(key)));
-          kids.push(group(rolls.sort((a, b) => b.createdAt - a.createdAt).map(r => h('button', { class: 'line pick' + (sel === r.id ? ' on' : ''), 'data-roll': r.id, onclick: () => { sel = r.id; sheet.render(); } },
-            h('span', { class: 'line-label two' }, h('b', null, r.title), h('small', null, [filmLabel(r), r.camera, frameCount(r.id) + '/' + r.frames + ' Exp.'].filter(Boolean).join(', '))),
-            sel === r.id ? icon('check') : null))));
+          kids.push(group(rolls.sort((a, b) => b.createdAt - a.createdAt).map(r => swipeRow(
+            rollRow(r, () => { sel = r.id; sheet.render(); }, sel === r.id ? icon('check') : h('span', { class: 'line-gap' }), ' pick' + (sel === r.id ? ' on' : '')),
+            'r:' + r.id, async () => { await trashRoll(r.id); refreshAll(); toast(t('movedToTrash')); }))));
         });
       }
       const top = sheet.body.scrollTop;
@@ -1889,7 +1978,7 @@
   async function makeBackup() {
     const media = await DB.all('media');
     const data = {
-      app: 'film-log', version: 1, exportedAt: new Date().toISOString(), settings: S.settings, rolls: S.rolls, shots: S.shots, folders: S.folders, tags: S.tags,
+      app: 'film-log', version: 1, exportedAt: new Date().toISOString(), settings: S.settings, rolls: S.rolls.concat(S.trash), shots: S.shots, folders: S.folders, tags: S.tags,
       media: media.map(m => ({ id: m.id, type: m.type, w: m.w, h: m.h, data: toB64(m.buf) }))
     };
     const d = new Date();
@@ -1913,7 +2002,8 @@
     });
     urls.forEach(u => URL.revokeObjectURL(u));
     urls.clear();
-    S.rolls = data.rolls;
+    S.rolls = data.rolls.filter(r => !r.deletedAt);
+    S.trash = data.rolls.filter(r => r.deletedAt);
     S.shots = data.shots;
     S.folders = data.folders || [];
     S.tags = data.tags || [];
@@ -1960,8 +2050,7 @@
           h('button', { class: 'line action', 'data-act': 'backup-restore', onclick: () => fileIn.click() }, t('backupRestore'))),
         h('p', { class: 'group-note' }, t('backupHint')),
         h('p', { class: 'section-label' }, t('about')),
-        group(lineBtn(t('changelog'), 'Alpha ' + VERSION, openChangelog, { 'data-act': 'changelog' })),
-        h('p', { class: 'group-note', 'data-version': '' }, 'Film_Log Alpha ' + VERSION),
+        group(lineBtn(t('trash'), String(S.trash.length), openTrash, { 'data-act': 'trash-open' }), lineBtn(t('changelog'), 'Alpha ' + VERSION, openChangelog, { 'data-act': 'changelog' })),
         standalone ? null : h('p', { class: 'group-note' }, t('installHint')),
         fileIn
       ].filter(Boolean));
@@ -1999,11 +2088,15 @@
     renderHome();
     try {
       await DB.open();
-      S.rolls = await DB.all('rolls');
+      const all = await DB.all('rolls');
+      S.rolls = all.filter(r => !r.deletedAt);
+      S.trash = all.filter(r => r.deletedAt);
       S.shots = await DB.all('shots');
       S.folders = await DB.all('folders');
       S.tags = await DB.all('tags');
     } catch (e) { toast(t('dbError')); }
+    // Papierkorb: was länger als 30 Tage liegt, endgültig entfernen
+    for (const r of S.trash.filter(x => Date.now() - x.deletedAt > TRASH_DAYS * DAY)) { try { await deleteRoll(r.id); } catch (e) {} }
     renderHome();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

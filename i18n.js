@@ -72,6 +72,9 @@ window.I18N = {
     about: 'Über die App', changelog: 'Changelog', changelogSub: 'Was sich mit jeder Version geändert hat', clNew: 'Neu', clChanged: 'Geändert', clRemoved: 'Entfernt',
     simple: 'Simple Mode', shotSaved: 'Shot {n} gespeichert', record: 'Aufnehmen', add: 'Hinzufügen', locRemove: 'Standort entfernen',
     th_hell: 'Hell', th_dunkel: 'Dunkel',
+    trash: 'Papierkorb', trashHint: 'Gelöschte Rollen bleiben 30 Tage hier und werden danach endgültig entfernt.', trashEmpty: 'Der Papierkorb ist leer.',
+    trashDays: n => 'noch ' + n + (n === 1 ? ' Tag' : ' Tage'), putBack: 'Wiederherstellen', putBackDone: 'Wiederhergestellt', purge: 'Endgültig löschen',
+    emptyTrash: 'Papierkorb leeren', askEmptyTrash: 'Alle Rollen im Papierkorb endgültig löschen?', movedToTrash: 'In den Papierkorb verschoben',
     dbError: 'Der Speicher ist nicht verfügbar. Deine Daten können nicht gesichert werden.',
     saveFail: 'Speichern fehlgeschlagen.'
   },
@@ -147,6 +150,9 @@ window.I18N = {
     about: 'About the app', changelog: 'Changelog', changelogSub: 'What changed with each version', clNew: 'New', clChanged: 'Changed', clRemoved: 'Removed',
     simple: 'Simple Mode', shotSaved: 'Shot {n} saved', record: 'Record', add: 'Add', locRemove: 'Remove location',
     th_hell: 'Light', th_dunkel: 'Dark',
+    trash: 'Bin', trashHint: 'Deleted rolls stay here for 30 days and are then removed for good.', trashEmpty: 'The bin is empty.',
+    trashDays: n => n + (n === 1 ? ' day left' : ' days left'), putBack: 'Restore', putBackDone: 'Restored', purge: 'Delete for good',
+    emptyTrash: 'Empty bin', askEmptyTrash: 'Delete all rolls in the bin for good?', movedToTrash: 'Moved to the bin',
     dbError: 'Storage is unavailable. Your data cannot be saved.',
     saveFail: 'Saving failed.'
   }
@@ -226,6 +232,9 @@ Object.assign(window.I18N, {
     about: 'À propos', changelog: 'Changelog', changelogSub: 'Ce qui a changé à chaque version', clNew: 'Nouveau', clChanged: 'Modifié', clRemoved: 'Supprimé',
     simple: 'Simple Mode', shotSaved: 'Vue {n} enregistrée', record: 'Enregistrer', add: 'Ajouter', locRemove: 'Supprimer le lieu',
     th_hell: 'Clair', th_dunkel: 'Sombre',
+    trash: 'Corbeille', trashHint: 'Les pellicules supprimées restent ici 30 jours, puis sont effacées définitivement.', trashEmpty: 'La corbeille est vide.',
+    trashDays: n => 'encore ' + n + (n === 1 ? ' jour' : ' jours'), putBack: 'Restaurer', putBackDone: 'Restaurée', purge: 'Supprimer définitivement',
+    emptyTrash: 'Vider la corbeille', askEmptyTrash: 'Supprimer définitivement toutes les pellicules de la corbeille ?', movedToTrash: 'Déplacée dans la corbeille',
     dbError: 'Le stockage est indisponible. Tes données ne peuvent pas être enregistrées.',
     saveFail: 'Échec de l’enregistrement.'
   },
@@ -301,6 +310,9 @@ Object.assign(window.I18N, {
     about: 'Acerca de la app', changelog: 'Changelog', changelogSub: 'Qué cambió en cada versión', clNew: 'Nuevo', clChanged: 'Cambiado', clRemoved: 'Eliminado',
     simple: 'Simple Mode', shotSaved: 'Toma {n} guardada', record: 'Grabar', add: 'Añadir', locRemove: 'Quitar ubicación',
     th_hell: 'Claro', th_dunkel: 'Oscuro',
+    trash: 'Papelera', trashHint: 'Los carretes eliminados se quedan aquí 30 días y después se borran definitivamente.', trashEmpty: 'La papelera está vacía.',
+    trashDays: n => (n === 1 ? 'queda ' : 'quedan ') + n + (n === 1 ? ' día' : ' días'), putBack: 'Restaurar', putBackDone: 'Restaurado', purge: 'Eliminar definitivamente',
+    emptyTrash: 'Vaciar papelera', askEmptyTrash: '¿Eliminar definitivamente todos los carretes de la papelera?', movedToTrash: 'Movido a la papelera',
     dbError: 'El almacenamiento no está disponible. Tus datos no se pueden guardar.',
     saveFail: 'No se pudo guardar.'
   },
@@ -376,6 +388,9 @@ Object.assign(window.I18N, {
     about: 'Sobre o app', changelog: 'Changelog', changelogSub: 'O que mudou em cada versão', clNew: 'Novo', clChanged: 'Alterado', clRemoved: 'Removido',
     simple: 'Simple Mode', shotSaved: 'Foto {n} salva', record: 'Gravar', add: 'Adicionar', locRemove: 'Remover local',
     th_hell: 'Claro', th_dunkel: 'Escuro',
+    trash: 'Lixeira', trashHint: 'Os rolos excluídos ficam aqui por 30 dias e depois são apagados de vez.', trashEmpty: 'A lixeira está vazia.',
+    trashDays: n => (n === 1 ? 'resta ' : 'restam ') + n + (n === 1 ? ' dia' : ' dias'), putBack: 'Restaurar', putBackDone: 'Restaurado', purge: 'Excluir definitivamente',
+    emptyTrash: 'Esvaziar lixeira', askEmptyTrash: 'Excluir definitivamente todos os rolos da lixeira?', movedToTrash: 'Movido para a lixeira',
     dbError: 'O armazenamento está indisponível. Seus dados não podem ser salvos.',
     saveFail: 'Falha ao salvar.'
   }

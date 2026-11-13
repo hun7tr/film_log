@@ -6,6 +6,18 @@
 */
 window.CHANGELOG = [
   {
+    v: '0.10', date: '2026-11-13',
+    title: { de: 'Glas-Tab-Leiste, Papierkorb, Rollen als Karten', en: 'Glass tab bar, bin, rolls as cards' },
+    de: {
+      added: ['Papierkorb: Gelöschte Rollen bleiben 30 Tage erhalten und lassen sich in den Einstellungen wiederherstellen', 'Wischen zum Löschen auch in der Export-Liste', 'App-Name und Version stehen oben auf allen vier Seiten'],
+      changed: ['Tab-Leiste im Glas-Stil: Der Marker gleitet zum gewählten Punkt und folgt beim Drücken dem Finger', 'Rollen und Ordner in Aktiv und Archiv sehen aus wie in Export: Zeilen in einer Karte', 'Rollen werden ohne Rückfrage gelöscht, weil sie im Papierkorb landen']
+    },
+    en: {
+      added: ['Bin: deleted rolls are kept for 30 days and can be restored in Settings', 'Swipe to delete in the export list too', 'App name and version are shown at the top of all four pages'],
+      changed: ['Glass-style tab bar: the marker glides to the selected item and follows your finger while pressed', 'Rolls and folders in Active and Archive look like in Export: rows in a card', 'Rolls are deleted without a confirmation because they go to the bin']
+    }
+  },
+  {
     v: '0.9', date: '2026-11-13',
     title: { de: 'Neuer Aufbau wie die Uhr-App, Simple Mode, Themes Hell und Dunkel', en: 'New layout like the Clock app, Simple Mode, Light and Dark themes' },
     de: {
