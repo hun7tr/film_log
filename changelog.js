@@ -6,6 +6,46 @@
 */
 window.CHANGELOG = [
   {
+    v: '0.13', date: '2026-11-14',
+    title: { de: 'Papierkorb für alles, Belichtungskorrektur, Doppelbelichtung und Feedback', en: 'Bin for everything, exposure compensation, double exposure and feedback' },
+    de: {
+      added: [
+        'Belichtungskorrektur in Drittelstufen und Doppelbelichtung als eigene Felder, im Assistenten als gemeinsamer Schritt nach dem Blitz; nicht bei Point-and-Shoot',
+        'Mehrere Shots auf einer Nummer (05, 05.2) gelten automatisch als Doppelbelichtung',
+        'Korrektur und Doppelbelichtung in CSV, PDF, Karte, Scans (EXIF) und CSV-Import',
+        'Shots, Ordner und Tags kommen beim Löschen in den Papierkorb',
+        'Papierkorb nach Rollen, Shots, Ordnern und Tags gegliedert, jeweils zuerst was am wenigsten Zeit übrig hat',
+        'Halten-Menü im Papierkorb und in den Filterergebnissen',
+        'Feedback in den Einstellungen: Einträge mit Titel und Text, bleiben auf dem Gerät und lassen sich auf Wunsch als Text teilen'
+      ],
+      changed: [
+        'Das Halten-Menü öffnet sich nach einer Sekunde statt nach zwei',
+        'Alle Rückfragen, Auswahlfenster und Texteingaben nutzen die Aufklappmenüs und Systemabfragen',
+        'Nach dem Löschen rücken Doppelnummern nach: bleibt nur 05.2 übrig, heißt sie wieder 05',
+        'Neue, archivierte, reaktivierte, importierte und wiederhergestellte Rollen stehen oben in ihrer Liste'
+      ],
+      removed: ['Die alten Auswahlfenster von unten', 'Ungenutzte Stile, Texte und Codereste früherer Versionen']
+    },
+    en: {
+      added: [
+        'Exposure compensation in thirds of a stop and double exposure as fields of their own, asked together after the flash step; not for point-and-shoot',
+        'Several shots on one number (05, 05.2) count as a double exposure automatically',
+        'Compensation and double exposure in CSV, PDF, map, scans (EXIF) and CSV import',
+        'Shots, folders and tags go to the bin when deleted',
+        'Bin grouped into rolls, shots, folders and tags, each starting with what has the least time left',
+        'Hold menu in the bin and in filter results',
+        'Feedback in Settings: entries with a title and text that stay on the device and can be shared as text on request'
+      ],
+      changed: [
+        'The hold menu opens after one second instead of two',
+        'All confirmations, choices and text prompts use the popup menus and system-style alerts',
+        'Duplicate numbers close up after deleting: if only 05.2 is left, it becomes 05 again',
+        'New, archived, reactivated, imported and restored rolls appear at the top of their list'
+      ],
+      removed: ['The old choice sheets sliding up from the bottom', 'Unused styles, texts and leftover code from earlier versions']
+    }
+  },
+  {
     v: '0.12', date: '2026-11-13',
     title: { de: 'Aufklappmenüs statt Wischen, einheitliche Rückfrage beim Löschen', en: 'Popup menus instead of swiping, one confirmation for deleting' },
     de: {

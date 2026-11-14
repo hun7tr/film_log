@@ -19,6 +19,7 @@
     ascii: (tag, s) => { const b = zstr(s); return { tag, type: 2, count: b.length, bytes: b }; },
     short: (tag, v) => ({ tag, type: 3, count: 1, bytes: u16(v) }),
     long: (tag, v) => ({ tag, type: 4, count: 1, bytes: u32(v) }),
+    srational: (tag, pairs) => ({ tag, type: 10, count: pairs.length, bytes: cat(pairs.flatMap(p => [u32(p[0] >>> 0), u32(p[1] >>> 0)])) }),
     rational: (tag, pairs) => ({ tag, type: 5, count: pairs.length, bytes: cat(pairs.flatMap(p => [u32(p[0] >>> 0), u32(p[1] >>> 0)])) }),
     undef: (tag, b) => ({ tag, type: 7, count: b.length, bytes: b }),
     byte: (tag, b) => ({ tag, type: 1, count: b.length, bytes: b })
@@ -46,7 +47,7 @@
   const exifDate = ms => { const d = new Date(ms); return d.getFullYear() + ':' + p2(d.getMonth() + 1) + ':' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds()); };
   const dms = v => { const a = Math.abs(v), d = Math.floor(a), mf = (a - d) * 60, m = Math.floor(mf); return [[d, 1], [m, 1], [Math.round((mf - m) * 60 * 100), 100]]; };
 
-  /* meta: {description, model, date(ms), exposure:[num,den], fnumber, iso, focal, lat, lon, comment} — every field optional */
+  /* meta: {description, model, date(ms), exposure:[num,den], fnumber, iso, focal, flash, ev (thirds of a stop), lat, lon, comment} — every field optional */
   function tiff(meta, orientation) {
     const dt = meta.date != null ? exifDate(meta.date) : null;
     const ifd0 = [E.ascii(0x0131, 'Film_Log')];
@@ -60,6 +61,7 @@
     if (meta.fnumber) exif.push(E.rational(0x829D, [[Math.round(meta.fnumber * 10), 10]]));
     if (meta.iso) exif.push(E.short(0x8827, Math.min(65535, meta.iso)));
     if (dt) exif.push(E.ascii(0x9003, dt), E.ascii(0x9004, dt));
+    if (meta.ev != null) exif.push(E.srational(0x9204, [[meta.ev, 3]]));
     if (meta.flash != null) exif.push(E.short(0x9209, meta.flash ? 1 : 0));
     if (meta.focal) exif.push(E.rational(0x920A, [[Math.round(meta.focal * 10), 10]]));
     if (meta.comment) exif.push(E.undef(0x9286, cat([new Uint8Array([0x41, 0x53, 0x43, 0x49, 0x49, 0, 0, 0]), enc.encode(plain(meta.comment))])));

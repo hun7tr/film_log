@@ -5,7 +5,7 @@
   function cell(v) {
     v = v == null ? '' : String(v);
     // keep spreadsheet apps from reading free text as a formula
-    if (/^[=+\-@]/.test(v) && !/^-?\d+([.,]\d+)?$/.test(v)) v = "'" + v;
+    if (/^[=+\-@]/.test(v) && !/^[+\-]?\d+([.,]\d+)?$/.test(v)) v = "'" + v;
     return /[";\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
   }
 

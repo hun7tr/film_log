@@ -6,16 +6,16 @@
     hell: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] },
     dunkel: { bar: '#161617', colors: ['#161617', '#2A2A2D', '#3D3D42', '#9C9BA1', '#FF7A3D'], pdf: [224, 98, 40] }
   };
-  const VERSION = '0.12';
+  const VERSION = '0.13';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
-  const DEFAULTS = { shutter: '1/125', aperture: '8', focal: 50, flash: false };
-  const STEPS = ['no', 'shutter', 'aperture', 'focal', 'loc', 'date', 'notes', 'ref', 'done'];
-  const LAST = STEPS.length - 1;
+  const DEFAULTS = { shutter: '1/125', aperture: '8', focal: 50, flash: false, ev: 0 };
+  // Belichtungskorrektur in Drittelstufen: -9 = −3 EV … +9 = +3 EV
+  const EVS = Array.from({ length: 19 }, (_, i) => i - 9);
   const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note', 'pns', 'simple'];
 
-  const S = { rolls: [], trash: [], shots: [], folders: [], tags: [], settings: { theme: 'hell', lang: 'de' } };
+  const S = { rolls: [], shots: [], folders: [], tags: [], feedback: [], trash: { rolls: [], shots: [], folders: [], tags: [] }, settings: { theme: 'hell', lang: 'de' } };
 
   // ------------------------------------------------------------ Helfer
   function h(tag, attrs, ...kids) {
@@ -50,6 +50,9 @@
     filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
     map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
     bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+    double: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',
+    importIc: '<path d="M12 3v12M8 11l4 4 4-4M5 13v7h14v-7"/>',
+    undo: '<path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
     pencil: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
@@ -88,6 +91,14 @@
   const fmtFocal = v => v == null ? '' : v + ' mm';
   const fmtCoord = (lat, lon) => lat.toFixed(5) + ', ' + lon.toFixed(5);
   const fmtPush = n => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n || 0);
+  // Drittelstufen lesbar: 4 -> +1⅓, für CSV und PDF ohne Sonderzeichen: +1 1/3
+  const fmtEv = (n, ascii) => {
+    if (n == null) return '';
+    if (n === 0) return '±0';
+    const a = Math.abs(n), w = Math.floor(a / 3), r = a % 3;
+    const frac = !r ? '' : ascii ? (w ? ' ' : '') + r + '/3' : r === 1 ? '⅓' : '⅔';
+    return (n > 0 ? '+' : ascii ? '-' : '−') + (w || !r ? w : '') + frac;
+  };
   const noLabel = (no, sub) => pad2(no) + (sub > 1 ? '.' + sub : '');
   const toLocalInput = ms => {
     if (ms == null) return '';
@@ -109,10 +120,10 @@
     db: null,
     open() {
       return new Promise((res, rej) => {
-        const r = indexedDB.open('film-log', 2);
+        const r = indexedDB.open('film-log', 3);
         r.onupgradeneeded = () => {
           const d = r.result;
-          ['rolls', 'shots', 'media', 'folders', 'tags'].forEach(n => { if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, { keyPath: 'id' }); });
+          ['rolls', 'shots', 'media', 'folders', 'tags', 'feedback'].forEach(n => { if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, { keyPath: 'id' }); });
         };
         r.onsuccess = () => { DB.db = r.result; res(); };
         r.onerror = () => rej(r.error);
@@ -246,35 +257,49 @@
     return sheet;
   }
 
-  // Rückfrage als kleines Fenster. buttons: [{label, value, kind, onTap}]
-  function ask(message, buttons, detail) {
+  // Rückfragen im Stil der iOS-Systemabfragen. buttons: [{label, value, kind: 'bold' | 'danger', act, onTap}]
+  // Zwei kurze Knöpfe stehen nebeneinander, sonst untereinander mit Abbrechen unten. Antippen daneben schließt nicht, wie bei iOS.
+  function alertBox(o) {
+    const stack = o.buttons.length > 2 || o.buttons.some(b => b.label.length > 13);
+    if (stack && o.buttons.length === 2) o = Object.assign({}, o, { buttons: o.buttons.slice().reverse() });
     return new Promise(resolve => {
       let done = false;
       const finish = v => {
         if (done) return;
         done = true;
         layer.classList.remove('open');
-        setTimeout(() => layer.remove(), 340);
+        setTimeout(() => layer.remove(), 200);
         resolve(v);
       };
-      const el = h('section', { class: 'sheet mini', role: 'alertdialog', 'aria-modal': 'true' },
-        h('p', { class: 'mini-msg' }, message),
-        detail ? h('p', { class: 'mini-detail' }, detail) : null,
-        buttons.map(b => h('button', {
-          class: 'btn ' + (b.kind || ''),
-          onclick: () => { if (b.onTap) b.onTap(); finish(b.value); }
-        }, b.label)));
-      const layer = h('div', { class: 'layer', style: 'z-index:40' }, h('div', { class: 'backdrop', onclick: () => finish(null) }), el);
+      const btns = o.buttons.map((b, i) => h('button', { class: b.kind || null, 'data-act': b.act || 'alert-' + i, onclick: () => { if (b.onTap) b.onTap(); finish(b.value); } }, b.label));
+      if (o.input) o.input.addEventListener('keydown', e => { if (e.key === 'Enter') { const b = o.buttons.find(x => x.kind === 'bold'); if (b) finish(b.value); } });
+      const layer = h('div', { class: 'alert-layer' },
+        h('div', { class: 'alert', role: 'alertdialog', 'aria-modal': 'true' },
+          h('div', { class: 'alert-text' },
+            h('p', { class: 'alert-title' }, o.title),
+            o.message ? h('p', { class: 'alert-msg' }, o.message) : null,
+            o.input || null),
+          h('div', { class: 'alert-btns' + (stack ? ' stack' : '') }, btns)));
       layers.append(layer);
       void layer.offsetHeight;
       layer.classList.add('open');
+      if (o.input) setTimeout(() => o.input.focus(), 220);
     });
   }
-  const askSave = msg => ask(msg, [
-    { label: t('save'), value: 'save', kind: 'primary' },
-    { label: t('discard'), value: 'discard' },
-    { label: t('cancel'), value: null, kind: 'ghost' }
-  ]);
+  const confirmDelete = (message, okLabel) => alertBox({ title: message, buttons: [
+    { label: t('cancel'), value: false, act: 'alert-cancel' },
+    { label: okLabel || t('delete'), value: true, kind: 'danger', act: 'alert-ok' }] });
+  const askSave = msg => alertBox({ title: msg, buttons: [
+    { label: t('save'), value: 'save', kind: 'bold', act: 'alert-save' },
+    { label: t('discard'), value: 'discard', kind: 'danger', act: 'alert-discard' },
+    { label: t('cancel'), value: null, act: 'alert-cancel' }] });
+  async function askText(title, initial, placeholder) {
+    const input = h('input', { type: 'text', class: 'alert-input', placeholder, value: initial || '', autocomplete: 'off', enterkeyhint: 'done', 'data-field': 'ask-text' });
+    const ok = await alertBox({ title, input, buttons: [
+      { label: t('cancel'), value: false, act: 'alert-cancel' },
+      { label: t('save'), value: true, kind: 'bold', act: 'alert-ok' }] });
+    return ok ? input.value.trim() || null : null;
+  }
 
   function refreshAll() {
     renderHome();
@@ -284,7 +309,7 @@
   // ------------------------------------------------------------ Seiten mit Tab-Leiste (statt Hauptmenü)
   const home = document.getElementById('home');
   const TABS = [['active', 'tabActive'], ['archive', 'tabArchive'], ['export', 'tabExport'], ['settings', 'tabSettings']];
-  let page = null, tabName = 'active', exportPre = null;
+  let page = null, tabName = 'active';
   const tabbar = h('nav', { class: 'tabbar' });
   // Glas-Marker, der zwischen den Tabs gleitet und beim Drücken dem Finger folgt
   const tabLens = h('div', { class: 'tab-lens' });
@@ -358,7 +383,7 @@
     home.replaceChildren(h('header', { class: 'page-head' }, left, h('div', { class: 'page-brand' }, h('b', null, 'Film_Log'), h('span', { 'data-version': '' }, 'Alpha ' + VERSION)), right), title, body, foot, tabbar);
     renderTabbar();
     if (name === 'active' || name === 'archive') openList(name, page);
-    else if (name === 'export') { openExport(exportPre, page); exportPre = null; }
+    else if (name === 'export') openExport(null, page);
     else openSettings(page);
   }
 
@@ -434,6 +459,7 @@
     const save = async () => {
       if (roll) { Object.assign(roll, cleanRoll(d, fallback)); await DB.put('rolls', roll); return roll; }
       const r = Object.assign({ id: uid(), createdAt: Date.now(), archived: false, askedFull: false }, cleanRoll(d, fallback));
+      toTop(r, false);
       await DB.put('rolls', r);
       S.rolls.push(r);
       return r;
@@ -507,6 +533,8 @@
       withRoll && roll ? h('span', null, roll.title) : null,
       s.date != null && !pns ? h('span', null, fmtDateTime(s.date)) : null,
       s.flash ? icon('bolt') : null,
+      !pns && s.ev ? h('span', null, fmtEv(s.ev) + ' EV') : null,
+      !pns && s.double ? icon('double') : null,
       s.lat != null ? icon('pin') : null,
       s.audioId ? icon('mic') : null,
       s.note ? h('span', null, s.note) : null
@@ -520,21 +548,12 @@
       s.thumb ? h('img', { class: 'shot-thumb', src: s.thumb, alt: '' }) : h('span'));
   }
 
-  async function removeFolder(id) {
-    for (const r of S.rolls) if (r.folderId === id) { r.folderId = null; await DB.put('rolls', r); }
-    await DB.del('folders', id);
-    S.folders = S.folders.filter(x => x.id !== id);
-  }
   const rollLine = r => keyed(rollRow(r, () => openRoll(r.id)), 'r:' + r.id);
   async function removeShotAsk(s) {
-    const ok = await confirmDelete(t('askDeleteShot', { n: noLabel(s.no, s.sub) }));
-    if (!ok) return;
-    await dropMedia(s.photoId);
-    await dropMedia(s.audioId);
-    await DB.del('shots', s.id);
-    S.shots = S.shots.filter(x => x.id !== s.id);
+    if (!(await confirmDelete(t('askTrashShot', { n: noLabel(s.no, s.sub) })))) return;
+    await toTrash('shots', s);
     refreshAll();
-    toast(t('deleted'));
+    toast(t('movedToTrash'));
   }
   const keyed = (row, key) => { row.dataset.drag = key; return row; };
   const shotLine = s => keyed(shotRow(s), 's:' + s.id);
@@ -542,8 +561,8 @@
   function openList(kind, host) {
     const sheet = host || openSheet({ title: t(kind) });
     const round = (act, ic, label, fn) => h('button', { class: 'icon-btn', 'aria-label': label, 'data-act': act, onclick: fn }, icon(ic));
-    const addMenu = async () => {
-      const a = await ask(t('archive'), [{ label: t('newFolder'), value: 'folder' }, { label: t('importCsv'), value: 'import' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+    const addMenu = async e => {
+      const a = await popMenu(e.currentTarget, [{ label: t('newFolder'), value: 'folder', icon: 'folder' }, { label: t('importCsv'), value: 'import', icon: 'importIc' }]);
       if (a === 'folder') { if (await createFolder()) refreshAll(); } else if (a === 'import') openImport();
     };
     sortable(sheet.body, {
@@ -603,48 +622,28 @@
       const hasCheck = items.some(i => i.checked != null);
       const menu = h('div', { class: 'pop', role: 'menu' },
         title ? h('div', { class: 'pop-title' }, title) : null,
-        items.map(i => h('button', { class: 'pop-item' + (i.danger ? ' danger' : ''), role: 'menuitem', 'data-value': String(i.value), onclick: () => { if (armed) finish(i.value); } },
+        items.map(i => h('button', { class: 'pop-item' + (i.danger ? ' danger' : ''), role: 'menuitem', 'data-value': String(i.value), onclick: () => { if (!armed) return; if (i.onTap) i.onTap(); finish(i.value); } },
           hasCheck ? h('span', { class: 'pop-check' }, i.checked ? icon('check') : null) : null,
           h('span', { class: 'pop-label' }, i.label), i.icon ? icon(i.icon) : null)));
       const layer = h('div', { class: 'pop-layer', onclick: e => { if (e.target === layer && armed) finish(null); } }, menu);
       layers.append(layer);
-      const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 125, right: innerWidth / 2 + 125, top: innerHeight / 2, bottom: innerHeight / 2 };
+      const ar = anchor && anchor.isConnected && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+      const r = ar && ar.width ? ar : { left: innerWidth / 2 - 125, right: innerWidth / 2 + 125, top: innerHeight / 3, bottom: innerHeight / 3 };
       const w = menu.offsetWidth, hh = menu.offsetHeight;
       let top = r.bottom + 8, above = false;
       if (top + hh > innerHeight - 20) { top = Math.max(50, r.top - hh - 8); above = true; }
       menu.style.top = top + 'px';
       menu.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.right - w)) + 'px';
       menu.style.transformOrigin = (above ? 'bottom' : 'top') + ' right';
+      const on = hasCheck && menu.querySelector('.pop-check svg');
+      if (on) { const it = on.closest('.pop-item'); menu.scrollTop = Math.max(0, it.offsetTop - (menu.clientHeight - it.offsetHeight) / 2); }
       void layer.offsetHeight;
       layer.classList.add('open');
       if (!armed) window.addEventListener('pointerup', () => setTimeout(() => { armed = true; }, 80), { once: true });
     });
   }
 
-  // Rückfrage vor dem Löschen, aufgebaut wie die Systemabfragen von iOS
-  function confirmDelete(message, okLabel) {
-    return new Promise(resolve => {
-      let done = false;
-      const finish = v => {
-        if (done) return;
-        done = true;
-        layer.classList.remove('open');
-        setTimeout(() => layer.remove(), 200);
-        resolve(v);
-      };
-      const layer = h('div', { class: 'alert-layer' },
-        h('div', { class: 'alert', role: 'alertdialog', 'aria-modal': 'true' },
-          h('p', { class: 'alert-title' }, message),
-          h('div', { class: 'alert-btns' },
-            h('button', { 'data-act': 'alert-cancel', onclick: () => finish(false) }, t('cancel')),
-            h('button', { class: 'danger', 'data-act': 'alert-ok', onclick: () => finish(true) }, okLabel || t('delete')))));
-      layers.append(layer);
-      void layer.offsetHeight;
-      layer.classList.add('open');
-    });
-  }
-
-  // Zeilen mit data-drag: zwei Sekunden halten öffnet das Menü (für Listen ohne Sortieren)
+  // Zeilen mit data-drag: eine Sekunde halten öffnet das Menü (für Listen ohne Sortieren)
   function holdable(box, onHold) {
     let st = null;
     const stop = () => { if (!st) return; clearTimeout(st.t1); clearTimeout(st.t2); st.el.classList.remove('holding'); st = null; };
@@ -672,7 +671,7 @@
       if (el && el._noClickUntil > Date.now()) { e.stopPropagation(); e.preventDefault(); }
     }, true);
   }
-  const HOLD_MS = 2000;
+  const HOLD_MS = 1000;
 
   // Menü einer Rolle: über die drei Punkte und über langes Halten in den Listen
   async function rollMenu(id, ctx) {
@@ -694,10 +693,11 @@
     else if (a === 'tags') openTags(roll, 'rolls');
     else if (a === 'scans') openScans(id);
     else if (a === 'map') openMap(roll.title, rollShots(id).reverse(), true);
-    else if (a === 'folder') { if (await moveToFolder(roll)) { refreshAll(); toast(t('saved')); } }
+    else if (a === 'folder') { if (await moveToFolder(roll, ctx.anchor)) { refreshAll(); toast(t('saved')); } }
     else if (a === 'export') openExport(id);
     else if (a === 'archive' || a === 'reactivate') {
       roll.archived = a === 'archive';
+      toTop(roll, roll.archived);
       await DB.put('rolls', roll);
       if (ctx.close) ctx.close();
       refreshAll();
@@ -724,11 +724,11 @@
       if (n) { f.name = n; await DB.put('folders', f); refreshAll(); }
     } else if (a === 'tags') openTags(f, 'folders');
     else if (a === 'delete') {
-      if (!(await confirmDelete(t('askDeleteFolder', { t: f.name })))) return;
-      await removeFolder(id);
+      if (!(await confirmDelete(t('askTrashFolder', { t: f.name })))) return;
+      await toTrash('folders', f);
       if (close) close();
       refreshAll();
-      toast(t('deleted'));
+      toast(t('movedToTrash'));
     }
   }
 
@@ -798,7 +798,7 @@
 
   // Simple Mode: Auslöser speichert sofort Nummer, Zeit und Standort; alles andere lässt sich später nachtragen
   async function quickShot(roll) {
-    const rec = { id: uid(), rollId: roll.id, createdAt: Date.now(), no: nextNo(roll.id), sub: 1, shutter: null, aperture: null, focal: null, flash: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null };
+    const rec = { id: uid(), rollId: roll.id, createdAt: Date.now(), no: nextNo(roll.id), sub: 1, shutter: null, aperture: null, focal: null, flash: null, ev: null, double: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null };
     try { await DB.put('shots', rec); } catch (e) { toast(t('saveFail')); return; }
     S.shots.push(rec);
     refreshAll();
@@ -818,60 +818,125 @@
     navigator.geolocation.getCurrentPosition(p => ok(p, true), () => {}, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
   }
 
-  async function deleteRoll(id) {
-    const shots = S.shots.filter(s => s.rollId === id);
-    for (const s of shots) {
-      await dropMedia(s.photoId);
-      await dropMedia(s.audioId);
-      await DB.del('shots', s.id);
+  // Mehrere Shots auf einer Nummer heißen 05, 05.2, 05.3 … ohne Lücken; zusammen gelten sie als Doppelbelichtung
+  async function renumber(rollId, no) {
+    const list = S.shots.filter(s => s.rollId === rollId && s.no === no).sort((a, b) => a.sub - b.sub || a.createdAt - b.createdAt);
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i], dbl = list.length > 1 ? true : s.double;
+      if (s.sub !== i + 1 || s.double !== dbl) { s.sub = i + 1; s.double = dbl; await DB.put('shots', s); }
     }
-    await DB.del('rolls', id);
-    S.shots = S.shots.filter(s => s.rollId !== id);
-    S.rolls = S.rolls.filter(r => r.id !== id);
-    S.trash = S.trash.filter(r => r.id !== id);
   }
 
-  // Papierkorb: gelöschte Rollen bleiben 30 Tage erhalten und lassen sich so lange wiederherstellen
+  // Neu angelegte, archivierte und wiederhergestellte Einträge stehen oben in ihrer Liste
+  const peersOf = archived => (archived ? S.rolls.filter(r => r.archived).concat(S.folders) : S.rolls.filter(r => !r.archived));
+  const topOrder = (archived, except) => peersOf(archived).reduce((m, x) => (x === except ? m : Math.min(m, x.order == null ? -1 : x.order)), 0) - 1;
+  const toTop = (obj, archived) => { obj.order = topOrder(archived, obj); };
+
+  // Papierkorb: gelöschte Rollen, Shots, Ordner und Tags bleiben 30 Tage erhalten
   const DAY = 86400000, TRASH_DAYS = 30;
-  async function trashRoll(id) {
-    const r = rollById(id);
-    if (!r) return;
-    r.deletedAt = Date.now();
-    await DB.put('rolls', r);
-    S.rolls = S.rolls.filter(x => x !== r);
-    S.trash.push(r);
-    stack.slice().forEach(s => { if (s.rollId === id) s.close(); });
+  const TRASH_KINDS = ['rolls', 'shots', 'folders', 'tags'];
+  const allOf = kind => S[kind].concat(S.trash[kind]);
+  const trashCount = () => TRASH_KINDS.reduce((n, k) => n + S.trash[k].length, 0);
+  const daysLeft = o => Math.max(1, Math.ceil((o.deletedAt + TRASH_DAYS * DAY - Date.now()) / DAY));
+
+  async function purgeShot(s) {
+    await dropMedia(s.photoId);
+    await dropMedia(s.audioId);
+    await DB.del('shots', s.id);
+    S.shots = S.shots.filter(x => x !== s);
+    S.trash.shots = S.trash.shots.filter(x => x !== s);
   }
-  async function restoreRoll(r) {
-    delete r.deletedAt;
-    await DB.put('rolls', r);
-    S.trash = S.trash.filter(x => x !== r);
-    S.rolls.push(r);
+  async function deleteRoll(id) {
+    for (const s of allOf('shots').filter(x => x.rollId === id)) await purgeShot(s);
+    await DB.del('rolls', id);
+    S.rolls = S.rolls.filter(r => r.id !== id);
+    S.trash.rolls = S.trash.rolls.filter(r => r.id !== id);
+  }
+  // endgültig löschen; Ordner und Tags lösen sich dabei von ihren Rollen
+  async function purge(kind, o) {
+    if (kind === 'rolls') return deleteRoll(o.id);
+    if (kind === 'shots') return purgeShot(o);
+    if (kind === 'folders') for (const r of allOf('rolls')) if (r.folderId === o.id) { r.folderId = null; await DB.put('rolls', r); }
+    if (kind === 'tags') for (const st of ['rolls', 'folders']) for (const x of allOf(st)) if ((x.tags || []).includes(o.id)) { x.tags = x.tags.filter(i => i !== o.id); await DB.put(st, x); }
+    await DB.del(kind, o.id);
+    S.trash[kind] = S.trash[kind].filter(x => x !== o);
+  }
+  // Ordner und Tags bleiben an ihren Rollen vermerkt, damit sie beim Wiederherstellen zurückkehren
+  async function toTrash(kind, o) {
+    o.deletedAt = Date.now();
+    await DB.put(kind, o);
+    S[kind] = S[kind].filter(x => x !== o);
+    S.trash[kind].push(o);
+    if (kind === 'rolls') stack.slice().forEach(sh => { if (sh.rollId === o.id) sh.close(); });
+    if (kind === 'shots') await renumber(o.rollId, o.no);
+  }
+  async function fromTrash(kind, o) {
+    if (kind === 'shots') {
+      const roll = S.trash.rolls.find(r => r.id === o.rollId);
+      if (roll) await fromTrash('rolls', roll);
+      o.sub = S.shots.filter(x => x.rollId === o.rollId && x.no === o.no).reduce((m, x) => Math.max(m, x.sub), 0) + 1;
+    }
+    delete o.deletedAt;
+    if (kind === 'rolls') toTop(o, o.archived);
+    if (kind === 'folders') toTop(o, true);
+    await DB.put(kind, o);
+    S.trash[kind] = S.trash[kind].filter(x => x !== o);
+    S[kind].push(o);
+    if (kind === 'shots') await renumber(o.rollId, o.no);
+  }
+  const trashRoll = id => { const r = rollById(id); return r ? toTrash('rolls', r) : null; };
+
+  function trashLabel(kind, o) {
+    const left = t('trashDays')(daysLeft(o));
+    if (kind === 'rolls') return { name: o.title, sub: left };
+    if (kind === 'folders') return { name: o.name, sub: left };
+    if (kind === 'tags') return { name: o.name, sub: left, chip: h('span', { class: 'tags' }, h('i', { class: 'tag', style: 'background:' + o.color }, o.name)) };
+    const r = rollById(o.rollId) || S.trash.rolls.find(x => x.id === o.rollId);
+    return { name: t('shot') + ' ' + noLabel(o.no, o.sub), sub: [r ? r.title : '', left].filter(Boolean).join(', ') };
+  }
+  async function trashMenu(key, el) {
+    const [, kind, id] = key.split(':');
+    const o = (S.trash[kind] || []).find(x => x.id === id);
+    if (!o) return;
+    const name = trashLabel(kind, o).name;
+    const a = await popMenu(el, [
+      { label: t('putBack'), value: 'back', icon: 'undo' },
+      { label: t('purge'), value: 'purge', icon: 'trash', danger: true }
+    ], name);
+    if (a === 'back') { await fromTrash(kind, o); refreshAll(); toast(t('putBackDone')); }
+    else if (a === 'purge') {
+      if (!(await confirmDelete(t('askPurge', { t: name })))) return;
+      await purge(kind, o);
+      refreshAll();
+      toast(t('deleted'));
+    }
   }
   function openTrash() {
     const sheet = openSheet({ title: t('trash') });
+    holdable(sheet.body, trashMenu);
     sheet.render = () => {
       sheet.setTitle(t('trash'));
-      const list = S.trash.slice().sort((a, b) => b.deletedAt - a.deletedAt);
-      sheet.body.replaceChildren(...[
-        h('p', { class: 'group-note lead' }, t('trashHint')),
-        list.length ? group(list.map(r => h('button', {
-          class: 'line', 'data-trash': r.title, onclick: async () => {
-            const a = await ask(r.title, [{ label: t('putBack'), value: 'back', kind: 'primary' }, { label: t('purge'), value: 'purge', kind: 'outline' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
-            if (a === 'back') { await restoreRoll(r); refreshAll(); toast(t('putBackDone')); }
-            else if (a === 'purge') { if (!(await confirmDelete(t('askDeleteRoll', { t: r.title })))) return; await deleteRoll(r.id); refreshAll(); toast(t('deleted')); }
-          }
-        }, h('span', { class: 'line-label two' }, h('b', null, r.title), h('small', null, t('trashDays')(Math.max(1, Math.ceil((r.deletedAt + TRASH_DAYS * DAY - Date.now()) / DAY))))), icon('chev')))) : h('p', { class: 'empty' }, t('trashEmpty')),
-        list.length ? group(h('button', {
-          class: 'line danger', 'data-act': 'trash-empty', onclick: async () => {
-            const ok = await confirmDelete(t('askEmptyTrash'), t('emptyTrash'));
-            if (!ok) return;
-            for (const r of S.trash.slice()) await deleteRoll(r.id);
-            refreshAll();
-            toast(t('deleted'));
-          }
-        }, t('emptyTrash'))) : null
-      ].filter(Boolean));
+      const kids = [h('p', { class: 'group-note lead' }, t('trashHint'))];
+      // je Art ein Abschnitt, zuerst was am wenigsten Zeit übrig hat
+      TRASH_KINDS.forEach(kind => {
+        const list = S.trash[kind].slice().sort((a, b) => a.deletedAt - b.deletedAt);
+        if (!list.length) return;
+        kids.push(h('p', { class: 'section-label' }, t(kind === 'shots' ? 'shotsHead' : kind)), group(list.map(o => {
+          const l = trashLabel(kind, o), key = 't:' + kind + ':' + o.id;
+          return keyed(h('button', { class: 'line', 'data-trash': l.name, onclick: e => trashMenu(key, e.currentTarget) },
+            h('span', { class: 'line-label two' }, l.chip || h('b', null, l.name), h('small', null, l.sub)), icon('chev')), key);
+        })));
+      });
+      if (!trashCount()) kids.push(h('p', { class: 'empty' }, t('trashEmpty')));
+      else kids.push(group(h('button', {
+        class: 'line danger', 'data-act': 'trash-empty', onclick: async () => {
+          if (!(await confirmDelete(t('askEmptyTrash'), t('emptyTrash')))) return;
+          for (const kind of TRASH_KINDS) for (const o of S.trash[kind].slice()) if (S.trash[kind].includes(o)) await purge(kind, o);
+          refreshAll();
+          toast(t('deleted'));
+        }
+      }, t('emptyTrash'))));
+      sheet.body.replaceChildren(...kids);
     };
     sheet.render();
   }
@@ -880,12 +945,12 @@
     if (roll.archived || roll.askedFull || frameCount(roll.id) < roll.frames) return;
     roll.askedFull = true;
     await DB.put('rolls', roll);
-    const a = await ask(t('askArchive', { t: roll.title }), [
-      { label: t('moreArchive'), value: true, kind: 'primary' },
-      { label: t('later'), value: null }
-    ]);
+    const a = await alertBox({ title: t('askArchive', { t: roll.title }), buttons: [
+      { label: t('later'), value: false, act: 'alert-cancel' },
+      { label: t('moreArchive'), value: true, kind: 'bold', act: 'alert-ok' }] });
     if (!a) return;
     roll.archived = true;
+    toTop(roll, true);
     await DB.put('rolls', roll);
     stack.slice().forEach(s => { if (s.rollId === roll.id) s.close(); });
     refreshAll();
@@ -953,8 +1018,8 @@
     const nn = v => (v == null ? null : v);
     // Point-and-Shoot: Zeit, Blende und Brennweite werden nicht abgefragt, vorhandene Werte bleiben aber gespeichert
     const d = isNew
-      ? { no: nextNo(rollId), shutter: null, aperture: null, focal: null, flash: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null }
-      : { no: shot.no, shutter: nn(shot.shutter), aperture: nn(shot.aperture), focal: nn(shot.focal), flash: shot.flash == null ? null : !!shot.flash, lat: nn(shot.lat), lon: nn(shot.lon), acc: nn(shot.acc), date: nn(shot.date), note: shot.note || '', audioId: shot.audioId || null, photoId: shot.photoId || null, thumb: shot.thumb || null };
+      ? { no: nextNo(rollId), shutter: null, aperture: null, focal: null, flash: null, ev: null, double: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null }
+      : { no: shot.no, shutter: nn(shot.shutter), aperture: nn(shot.aperture), focal: nn(shot.focal), flash: shot.flash == null ? null : !!shot.flash, ev: nn(shot.ev), double: shot.double == null ? null : !!shot.double, lat: nn(shot.lat), lon: nn(shot.lon), acc: nn(shot.acc), date: nn(shot.date), note: shot.note || '', audioId: shot.audioId || null, photoId: shot.photoId || null, thumb: shot.thumb || null };
     // bei einem neuen Shot zählt der automatisch ermittelte Standort nicht als Änderung
     const snap = () => JSON.stringify(isNew ? Object.assign({}, d, { lat: 0, lon: 0, acc: 0 }) : d);
     const orig = snap();
@@ -1032,13 +1097,12 @@
       navigator.geolocation.getCurrentPosition(p => ok(p, false), fail, { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 });
       navigator.geolocation.getCurrentPosition(p => ok(p, true), fail, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
     }
-    async function locMenu() {
-      const a = await ask(t('st_loc'), [
-        { label: t('locRetry'), value: 'gps' },
-        { label: t('pickOnMap'), value: 'map' },
-        d.lat != null ? { label: t('locRemove'), value: 'none', kind: 'outline' } : null,
-        { label: t('cancel'), value: null, kind: 'ghost' }
-      ].filter(Boolean));
+    async function locMenu(e) {
+      const a = await popMenu(e.currentTarget, [
+        { label: t('locRetry'), value: 'gps', icon: 'pin' },
+        { label: t('pickOnMap'), value: 'map', icon: 'map' },
+        d.lat != null ? { label: t('locRemove'), value: 'none', icon: 'trash', danger: true } : null
+      ].filter(Boolean), t('st_loc'));
       if (a === 'gps') locate();
       else if (a === 'map') openPicker(d.lat != null ? { lat: d.lat, lon: d.lon, z: 16 } : lastPlace(rollId), c => {
         geo.token++; geo.state = 'ok';
@@ -1131,13 +1195,13 @@
     }
     const camIn = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true, 'data-in': 'camera', onchange: onPick });
     const libIn = h('input', { type: 'file', accept: 'image/*', hidden: true, 'data-in': 'library', onchange: onPick });
-    async function refMenu() {
-      const a = await ask(t('st_ref'), [
-        { label: t('takePhoto'), value: 'cam', onTap: () => camIn.click() },
-        { label: t('pickPhoto'), value: 'lib', onTap: () => libIn.click() },
-        hasPhoto() ? { label: t('removePhoto'), value: 'none', kind: 'outline' } : null,
-        { label: t('cancel'), value: null, kind: 'ghost' }
-      ].filter(Boolean));
+    // Kamera und Mediathek öffnen sich direkt im Antippen, sonst blockiert Safari sie
+    async function refMenu(e) {
+      const a = await popMenu(e.currentTarget, [
+        { label: t('takePhoto'), value: 'cam', icon: 'camera', onTap: () => camIn.click() },
+        { label: t('pickPhoto'), value: 'lib', icon: 'image', onTap: () => libIn.click() },
+        hasPhoto() ? { label: t('removePhoto'), value: 'none', icon: 'trash', danger: true } : null
+      ].filter(Boolean), t('st_ref'));
       if (a === 'none') { newPhoto = null; d.photoId = null; d.thumb = null; updateRef(); }
     }
 
@@ -1147,7 +1211,7 @@
       try {
         if (rec) { const p = rec.done; stopRec(false); await p; }
         const sub = predictedSub();
-        const old = isNew ? {} : { photoId: shot.photoId, audioId: shot.audioId };
+        const old = isNew ? {} : { photoId: shot.photoId, audioId: shot.audioId, no: shot.no };
         if (newPhoto) {
           const mid = uid();
           await DB.put('media', { id: mid, buf: newPhoto.buf, type: newPhoto.type, w: newPhoto.w, h: newPhoto.h });
@@ -1162,6 +1226,8 @@
         Object.assign(record, d, { sub, note: d.note.trim() });
         await DB.put('shots', record);
         if (isNew) S.shots.push(record);
+        await renumber(rollId, record.no);
+        if (old.no != null && old.no !== record.no) await renumber(rollId, old.no);
         if (old.photoId && old.photoId !== d.photoId) await dropMedia(old.photoId);
         if (old.audioId && old.audioId !== d.audioId) await dropMedia(old.audioId);
         sheet.close();
@@ -1174,23 +1240,19 @@
     }
 
     async function removeShot() {
-      const ok = await confirmDelete(t('askDeleteShot', { n: noLabel(shot.no, shot.sub) }));
-      if (!ok) return;
+      if (!(await confirmDelete(t('askTrashShot', { n: noLabel(shot.no, shot.sub) })))) return;
       saving = true;
-      await dropMedia(shot.photoId);
-      await dropMedia(shot.audioId);
-      await DB.del('shots', shot.id);
-      S.shots = S.shots.filter(s => s.id !== shot.id);
+      await toTrash('shots', shot);
       sheet.close();
       refreshAll();
-      toast(t('deleted'));
+      toast(t('movedToTrash'));
     }
 
     // --- Neuer Shot: Schritt für Schritt
     let wstep = 0, onRef = null;
     function buildWizard() {
-      const STEPS = pns ? ['no', 'flash', 'loc', 'date', 'notes', 'ref'] : ['no', 'shutter', 'aperture', 'focal', 'flash', 'loc', 'date', 'notes', 'ref'];
-      const wv = { shutter: last.shutter, aperture: last.aperture, focal: last.focal, flash: !!last.flash };
+      const STEPS = pns ? ['no', 'flash', 'loc', 'date', 'notes', 'ref'] : ['no', 'shutter', 'aperture', 'focal', 'flash', 'corr', 'loc', 'date', 'notes', 'ref'];
+      const wv = { shutter: last.shutter, aperture: last.aperture, focal: last.focal, flash: !!last.flash, ev: last.ev == null ? 0 : last.ev, double: null };
       const lists = { shutter: [SHUTTERS, v => v], aperture: [APERTURES, fmtAperture], focal: [FOCALS, fmtFocal] };
       sheet.body.classList.add('steps');
       sheet.el.append(camIn, libIn);
@@ -1212,6 +1274,16 @@
         if (key === 'flash') {
           return h('div', { class: 'seg flash-seg' }, [[false, 'flashOff'], [true, 'flashOn']].map(([v, k]) =>
             h('button', { class: wv.flash === v ? 'on' : '', 'data-flash': String(v), onclick: () => { haptic(); wv.flash = v; render(); } }, v ? icon('bolt') : null, t(k))));
+        }
+        if (key === 'corr') {
+          // eine zweite Aufnahme auf derselben Nummer ist eine Doppelbelichtung
+          if (wv.double == null) wv.double = predictedSub() > 1;
+          const values = EVS.includes(wv.ev) ? EVS : EVS.concat(wv.ev).sort((a, b) => a - b);
+          const w = makeWheel(values, v => fmtEv(v) + ' EV', wv.ev, v => { wv.ev = v; });
+          w.dataset.wheel = 'ev';
+          const box = h('div', { class: 'step-box' }, w, group(lineSwitch(t('fDouble'), wv.double, v => { haptic(); wv.double = v; }, 'double')));
+          box.sync = () => w.sync();
+          return box;
         }
         if (key === 'loc') {
           return h('div', { class: 'step-box' },
@@ -1241,11 +1313,16 @@
           h('button', { class: 'btn', onclick: () => camIn.click() }, icon('camera'), t('takePhoto')),
           h('button', { class: 'btn', onclick: () => libIn.click() }, icon('image'), t('pickPhoto')));
       };
-      const commit = key => { if (lists[key]) d[key] = wv[key]; else if (key === 'flash') d.flash = wv.flash; };
+      const commit = key => {
+        if (lists[key]) d[key] = wv[key];
+        else if (key === 'flash') d.flash = wv.flash;
+        else if (key === 'corr') { d.ev = wv.ev; d.double = wv.double; }
+      };
       const skip = key => {
         if (lists[key] || key === 'flash') d[key] = null;
         else if (key === 'loc') { geo.token++; geo.state = 'idle'; d.lat = d.lon = d.acc = null; updateLoc(); }
         else if (key === 'date') d.date = null;
+        else if (key === 'corr') { d.ev = null; d.double = null; }
         else if (key === 'notes') { stopRec(true); if (player) { player.pause(); player = null; } d.note = ''; newAudio = null; d.audioId = null; renderAudio(); }
         else { newPhoto = null; d.photoId = null; d.thumb = null; }
       };
@@ -1281,6 +1358,16 @@
       w.dataset.wheel = k;
       return w;
     });
+    const evValue = h('span', { class: 'line-value' });
+    const showEv = () => { evValue.textContent = d.ev == null ? '–' : fmtEv(d.ev) + ' EV'; };
+    showEv();
+    const evMenu = async e => {
+      const vals = [null].concat(EVS.includes(d.ev) || d.ev == null ? EVS : EVS.concat(d.ev).sort((a, b) => a - b));
+      const a = await popMenu(e.currentTarget, vals.map(v => ({ label: v == null ? '–' : fmtEv(v) + ' EV', value: v == null ? 'none' : String(v), checked: d.ev === v })), t('fEv'));
+      if (a == null) return;
+      d.ev = a === 'none' ? null : Number(a);
+      showEv();
+    };
     const dateIn = h('input', { type: 'datetime-local', value: toLocalInput(d.date), 'data-field': 'date', 'aria-label': t('st_date'), oninput: e => { const v = e.target.value; d.date = v ? new Date(v).getTime() : null; } });
     const note = h('textarea', { class: 'line-area', placeholder: t('notePh'), 'aria-label': t('st_notes'), rows: 2, oninput: e => { d.note = e.target.value; } });
     note.value = d.note;
@@ -1296,7 +1383,10 @@
             h('button', { 'aria-label': '+', 'data-act': 'no-plus', onclick: () => { haptic(); d.no++; updateNo(); } }, '+'))),
         lineSwitch(t('st_flash'), d.flash === true, v => { haptic(); d.flash = v; }, 'flash')),
       noNote,
-      group(lineBtn(t('st_loc'), locValue, () => { haptic(); locMenu(); }, { 'data-act': 'loc' }), line(t('st_date'), dateIn)),
+      pns ? null : group(
+        lineBtn(t('fEv'), evValue, evMenu, { 'data-act': 'ev' }),
+        lineSwitch(t('fDouble'), d.double === true, v => { haptic(); d.double = v; }, 'double')),
+      group(lineBtn(t('st_loc'), locValue, e => { haptic(); locMenu(e); }, { 'data-act': 'loc' }), line(t('st_date'), dateIn)),
       locNote,
       group(note, audioBox, lineBtn(t('st_ref'), refValue, refMenu, { 'data-act': 'ref' })),
       isNew ? null : group(h('button', { class: 'line danger', 'data-act': 'shot-delete', onclick: removeShot }, t('deleteShot'))),
@@ -1314,31 +1404,6 @@
     if (isNew) locate();
   }
 
-  // ------------------------------------------------------------ Texteingabe als kleines Fenster
-  function askText(message, initial, placeholder) {
-    return new Promise(resolve => {
-      let done = false;
-      const finish = v => {
-        if (done) return;
-        done = true;
-        layer.classList.remove('open');
-        setTimeout(() => layer.remove(), 340);
-        resolve(v);
-      };
-      const input = h('input', { type: 'text', placeholder, value: initial || '', autocomplete: 'off', enterkeyhint: 'done', 'data-field': 'ask-text', onkeydown: e => { if (e.key === 'Enter') finish(input.value.trim() || null); } });
-      const el = h('section', { class: 'sheet mini', role: 'dialog', 'aria-modal': 'true' },
-        h('p', { class: 'mini-msg' }, message),
-        h('label', { class: 'field' }, input),
-        h('button', { class: 'btn primary', onclick: () => finish(input.value.trim() || null) }, t('save')),
-        h('button', { class: 'btn ghost', onclick: () => finish(null) }, t('cancel')));
-      const layer = h('div', { class: 'layer', style: 'z-index:40' }, h('div', { class: 'backdrop', onclick: () => finish(null) }), el);
-      layers.append(layer);
-      void layer.offsetHeight;
-      layer.classList.add('open');
-      setTimeout(() => input.focus(), 350);
-    });
-  }
-
   // ------------------------------------------------------------ Tags
   const TAG_COLORS = ['#B5533C', '#C98A2B', '#6E8B4E', '#3F8C8C', '#4E6FAE', '#8A5C9E', '#7A6A5A'];
   function tagChips(ids) {
@@ -1354,14 +1419,10 @@
     const save = async () => { await DB.put(store, target); refreshAll(); };
     const has = id => (target.tags || []).includes(id);
     async function removeTag(x) {
-      const ok = await confirmDelete(t('askDeleteTag', { t: x.name }));
-      if (!ok) return;
-      for (const [st, list] of [['rolls', S.rolls], ['folders', S.folders]]) {
-        for (const o of list) if ((o.tags || []).includes(x.id)) { o.tags = o.tags.filter(i => i !== x.id); await DB.put(st, o); }
-      }
-      await DB.del('tags', x.id);
-      S.tags = S.tags.filter(y => y.id !== x.id);
+      if (!(await confirmDelete(t('askTrashTag', { t: x.name })))) return;
+      await toTrash('tags', x);
       refreshAll();
+      toast(t('movedToTrash'));
     }
     sheet.render = () => {
       sheet.setTitle(t('tags'));
@@ -1396,6 +1457,7 @@
     const name = await askText(t('newFolder'), '', t('folderName'));
     if (!name) return null;
     const f = { id: uid(), name, tags: [], createdAt: Date.now() };
+    toTop(f, true);
     await DB.put('folders', f);
     S.folders.push(f);
     return f;
@@ -1424,14 +1486,13 @@
     sheet.render();
   }
 
-  async function moveToFolder(roll) {
+  async function moveToFolder(roll, anchor) {
     const folders = S.folders.slice().sort((a, b) => a.name.localeCompare(b.name));
-    const a = await ask(t('moreFolder'), [
-      ...folders.map(f => ({ label: f.name, value: f.id, kind: roll.folderId === f.id ? 'primary' : '' })),
-      { label: t('newFolder'), value: '__new', kind: 'outline' },
-      roll.folderId && folderById(roll.folderId) ? { label: t('noFolder'), value: '__none' } : null,
-      { label: t('cancel'), value: null, kind: 'ghost' }
-    ].filter(Boolean));
+    const a = await popMenu(anchor, [
+      ...folders.map(f => ({ label: f.name, value: f.id, icon: 'folder', checked: roll.folderId === f.id })),
+      { label: t('newFolder'), value: '__new', icon: 'plus', checked: false },
+      roll.folderId && folderById(roll.folderId) ? { label: t('noFolder'), value: '__none', checked: false } : null
+    ].filter(Boolean), t('moreFolder'));
     if (!a) return false;
     if (a === '__new') { const f = await createFolder(); if (!f) return false; roll.folderId = f.id; }
     else roll.folderId = a === '__none' ? null : a;
@@ -1504,6 +1565,7 @@
 
   function openResults(c) {
     const sheet = openSheet({ title: t('results') });
+    holdable(sheet.body, keyMenu);
     sheet.render = () => {
       sheet.setTitle(t('results'));
       const r = runFilter(c);
@@ -1511,9 +1573,9 @@
       if (!r.folders.length && !r.rolls.length && !r.shots.length) kids.push(h('p', { class: 'empty' }, t('noHits')));
       if (r.shots.some(s => s.lat != null)) kids.push(h('button', { class: 'btn', 'data-act': 'results-map', onclick: () => openMap(t('results'), r.shots) }, icon('map'), t('showOnMap')));
       const section = (key, n) => h('p', { class: 'section-label' }, t(key) + ' (' + n + ')');
-      if (r.folders.length) { kids.push(section('folders', r.folders.length)); kids.push(group(r.folders.map(f => folderRow(f, () => openFolder(f.id))))); }
-      if (r.rolls.length) { kids.push(section('rolls', r.rolls.length)); kids.push(group(r.rolls.map(x => rollRow(x, () => openRoll(x.id))))); }
-      if (r.shots.length) { kids.push(section('photos', r.shots.length)); kids.push(group(r.shots.slice(0, 300).map(s => shotRow(s, true)))); }
+      if (r.folders.length) { kids.push(section('folders', r.folders.length)); kids.push(group(r.folders.map(f => keyed(folderRow(f, () => openFolder(f.id)), 'f:' + f.id)))); }
+      if (r.rolls.length) { kids.push(section('rolls', r.rolls.length)); kids.push(group(r.rolls.map(rollLine))); }
+      if (r.shots.length) { kids.push(section('photos', r.shots.length)); kids.push(group(r.shots.slice(0, 300).map(s => keyed(shotRow(s, true), 's:' + s.id)))); }
       sheet.body.replaceChildren(...kids);
     };
     sheet.render();
@@ -1530,7 +1592,8 @@
     const show = s => {
       const roll = rollById(s.rollId) || { title: '' };
       const label = roll.title + ', ' + t('shot') + ' ' + noLabel(s.no, s.sub);
-      const vals = [s.shutter == null ? null : fmtShutterUnit(s.shutter), s.aperture == null ? null : fmtAperture(s.aperture), s.focal == null ? null : fmtFocal(s.focal)].filter(Boolean).join('   ');
+      const v = visible(roll)(s);
+      const vals = [v.shutter == null ? null : fmtShutterUnit(v.shutter), v.aperture == null ? null : fmtAperture(v.aperture), v.focal == null ? null : fmtFocal(v.focal), v.ev ? fmtEv(v.ev) + ' EV' : null].filter(Boolean).join('   ');
       sheet.foot.className = 'sheet-foot';
       sheet.foot.replaceChildren(
         h('div', { class: 'map-card', 'data-map-card': '' },
@@ -1552,8 +1615,8 @@
     const exposure = sh == null || sh === 'B' ? null : /s$/.test(sh) ? [parseInt(sh, 10), 1] : sh.split('/').map(Number);
     return {
       description: s.note || '', model: roll.camera || '', date: s.date, exposure,
-      fnumber: s.aperture == null ? null : Number(s.aperture), iso: roll.ei || roll.iso || null, focal: s.focal, flash: s.flash == null ? null : !!s.flash, lat: s.lat, lon: s.lon,
-      comment: [filmLabel(roll) ? 'Film: ' + filmLabel(roll) : '', roll.push ? 'Push/Pull ' + (roll.push > 0 ? '+' : '') + roll.push : '', 'Shot ' + noLabel(s.no, s.sub)].filter(Boolean).join(', ')
+      fnumber: s.aperture == null ? null : Number(s.aperture), iso: roll.ei || roll.iso || null, focal: s.focal, flash: s.flash == null ? null : !!s.flash, ev: s.ev, lat: s.lat, lon: s.lon,
+      comment: [filmLabel(roll) ? 'Film: ' + filmLabel(roll) : '', roll.push ? 'Push/Pull ' + (roll.push > 0 ? '+' : '') + roll.push : '', 'Shot ' + noLabel(s.no, s.sub), s.double ? 'Double exposure' : ''].filter(Boolean).join(', ')
     };
   }
 
@@ -1675,13 +1738,13 @@
 
   // ------------------------------------------------------------ Import aus CSV
   const IMPORT_FIELDS = [
-    ['roll', 'imRoll'], ['no', 'st_no'], ['shutter', 'st_shutter'], ['aperture', 'st_aperture'], ['focal', 'st_focal'], ['flash', 'st_flash'],
+    ['roll', 'imRoll'], ['no', 'st_no'], ['shutter', 'st_shutter'], ['aperture', 'st_aperture'], ['focal', 'st_focal'], ['flash', 'st_flash'], ['ev', 'fEv'], ['double', 'fDouble'],
     ['date', 'st_date'], ['time', 'cTime'], ['lat', 'cLat'], ['lon', 'cLon'], ['loc', 'imLoc'], ['notes', 'st_notes'],
     ['film', 'fFilm'], ['iso', 'fIso'], ['camera', 'fCamera']
   ];
   // Spaltennamen aus dem eigenen Export aller Sprachen ebenfalls erkennen
   function importNames() {
-    const cols = { cShot: 'no', cShutter: 'shutter', cAperture: 'aperture', cFocal: 'focal', cFlash: 'flash', cLat: 'lat', cLon: 'lon', cDate: 'date', cTime: 'time', cNotes: 'notes' };
+    const cols = { cShot: 'no', cShutter: 'shutter', cAperture: 'aperture', cFocal: 'focal', cFlash: 'flash', cEv: 'ev', cDouble: 'double', cLat: 'lat', cLon: 'lon', cDate: 'date', cTime: 'time', cNotes: 'notes' };
     const metas = { fTitle: 'title', fFilm: 'film', fCamera: 'camera', fIso: 'iso', fEi: 'ei', fPush: 'push', fNote: 'note', mShots: 'frames' };
     const extra = {}, metaMap = {};
     Object.values(window.I18N).forEach(d => {
@@ -1724,12 +1787,14 @@
         const learned = loadLearned();
         for (const f in map) if (map[f] != null) learned[window.FilmImport.norm(parsed.header[map[f]])] = f;
         try { localStorage.setItem('filmlog.csvmap', JSON.stringify(learned)); } catch (e) {}
-        const list = result(), now = Date.now(), rolls = [], shots = [];
+        const list = result(), now = Date.now(), rolls = [], shots = [], top = topOrder(true);
         list.forEach((g, gi) => {
           const dates = g.shots.map(s => s.date).filter(x => x != null);
-          const roll = Object.assign({ id: uid(), createdAt: dates.length ? Math.min(...dates) : now + gi, archived: true, askedFull: true, tags: [], folderId: null, pns: false }, g.roll);
+          const roll = Object.assign({ id: uid(), createdAt: dates.length ? Math.min(...dates) : now + gi, archived: true, askedFull: true, tags: [], folderId: null, pns: false, order: top - list.length + 1 + gi }, g.roll);
           rolls.push(roll);
-          g.shots.forEach((s, i) => shots.push(Object.assign({ id: uid(), rollId: roll.id, createdAt: now + i, audioId: null, photoId: null, thumb: null }, s)));
+          const count = {};
+          g.shots.forEach(s => { count[s.no] = (count[s.no] || 0) + 1; });
+          g.shots.forEach((s, i) => shots.push(Object.assign({ id: uid(), rollId: roll.id, createdAt: now + i, audioId: null, photoId: null, thumb: null }, s, count[s.no] > 1 ? { double: true } : null)));
         });
         await DB.run(['rolls', 'shots'], 'readwrite', tx => {
           rolls.forEach(r => tx.objectStore('rolls').put(r));
@@ -1852,8 +1917,8 @@
   }
   const activeItems = () => byOrder(S.rolls.filter(r => !r.archived).sort((a, b) => b.createdAt - a.createdAt)).map(o => ({ obj: o, folder: false, key: 'r:' + o.id }));
 
-  /* Kacheln mit data-drag: langes Halten hebt eine Kachel an. Loslassen ohne Bewegung öffnet ihr Menü,
-     Ziehen sortiert sie; die anderen Kacheln rücken dabei zur Seite. cb: {onMove(key, index), onInto(key, folderKey), onHold(key)} */
+  /* Zeilen mit data-drag: kurz halten und ziehen sortiert, die anderen Zeilen rücken dabei zur Seite.
+     Eine Sekunde halten ohne zu ziehen öffnet das Menü. cb: {onMove(key, index), onInto(key, folderKey), onHold(key, el)} */
   function sortable(box, cb) {
     let st = null;
     const reset = () => box.querySelectorAll('[data-drag]').forEach(e => { e.style.transform = ''; e.style.transition = ''; e.classList.remove('dragging', 'drop-into', 'over-folder'); });
@@ -1891,7 +1956,7 @@
         haptic();
         try { box.setPointerCapture(s.id); } catch (err) {}
       }, 420);
-      // zwei Sekunden halten, ohne zu ziehen: Menü öffnen, noch während der Finger liegt
+      // eine Sekunde halten, ohne zu ziehen: Menü öffnen, noch während der Finger liegt
       s.menuTimer = setTimeout(() => {
         if (st !== s || s.moved || !cb.onHold) return;
         st = null;
@@ -1963,7 +2028,6 @@
     const list = S.shots.filter(s => s.lat != null).sort((a, b) => (b.rollId === rollId) - (a.rollId === rollId) || b.createdAt - a.createdAt);
     return list.length ? { lat: list[0].lat, lon: list[0].lon, z: 15 } : { lat: 51.16, lon: 10.45, z: 5 };
   }
-  const layoutActive = l => S.settings.theme === 'custom' && CUSTOM_KEYS.every(k => l.colors[k] === customColors()[k]);
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
   // ------------------------------------------------------------ Export
@@ -1984,10 +2048,10 @@
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
-  const offerFile = (msg, file) => ask(msg, [
-    { label: t('share'), value: true, kind: 'primary', onTap: () => shareFile(file) },
-    { label: t('close'), value: null, kind: 'ghost' }
-  ], file.name);
+  // Teilen muss direkt im Antippen starten, sonst lehnt Safari es ab
+  const offerFile = (msg, file) => alertBox({ title: msg, message: file.name, buttons: [
+    { label: t('close'), value: null, act: 'alert-cancel' },
+    { label: t('share'), value: true, kind: 'bold', act: 'alert-ok', onTap: () => shareFile(file) }] });
   const slug = s => (s || 'film').normalize('NFKD').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'film';
 
   function rollMeta(roll) {
@@ -2004,20 +2068,23 @@
   }
 
   // Im Point-and-Shoot-Modus bleiben Zeit, Blende und Brennweite gespeichert, werden aber nicht ausgegeben
-  const visible = roll => s => (roll.pns ? Object.assign({}, s, { shutter: null, aperture: null, focal: null }) : s);
+  const visible = roll => s => (roll.pns ? Object.assign({}, s, { shutter: null, aperture: null, focal: null, ev: null, double: null }) : s);
   function buildCsv(roll) {
     const lang = S.settings.lang, de = lang !== 'en', sep = lang === 'de' ? '.' : '/';
     const num = v => (de ? String(v).replace('.', ',') : String(v));
     const date = ms => { const d = new Date(ms); return de ? pad2(d.getDate()) + sep + pad2(d.getMonth() + 1) + sep + d.getFullYear() : d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
     const time = ms => { const d = new Date(ms); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
     const meta = [[t('fTitle'), roll.title]].concat(rollMeta(roll).map(m => [m.label, m.value === '–' ? '' : m.value]), [[t('fNote'), roll.note || '']]);
-    const header = [t('cShot'), t('cShutter'), t('cAperture'), t('cFocal'), t('cFlash'), t('cLat'), t('cLon'), t('cDate'), t('cTime'), t('cNotes'), t('cRef')];
+    const header = [t('cShot'), t('cShutter'), t('cAperture'), t('cFocal'), t('cFlash'), t('cEv'), t('cDouble'), t('cLat'), t('cLon'), t('cDate'), t('cTime'), t('cNotes'), t('cRef')];
     const rows = rollShots(roll.id).reverse().map(visible(roll)).map(s => [
       noLabel(s.no, s.sub),
       s.shutter == null ? '' : fmtShutterUnit(s.shutter),
       s.aperture == null ? '' : 'f/' + num(s.aperture),
       s.focal == null ? '' : s.focal,
       s.flash == null ? '' : t(s.flash ? 'yes' : 'no'),
+      // Korrektur als Dezimalzahl wie im Kameradisplay (+0,7), damit Tabellen sie nicht als Bruch oder Datum lesen
+      s.ev == null ? '' : (s.ev > 0 ? '+' : '') + num(String(Math.round(s.ev / 3 * 10) / 10)),
+      s.double == null ? '' : t(s.double ? 'yes' : 'no'),
       s.lat == null ? '' : num(s.lat.toFixed(6)),
       s.lon == null ? '' : num(s.lon.toFixed(6)),
       s.date == null ? '' : date(s.date),
@@ -2049,6 +2116,8 @@
       if (s.date != null) lines.push(fmtDateTime(s.date));
       if (s.lat != null) lines.push(fmtCoord(s.lat, s.lon));
       if (s.flash != null) lines.push(t('st_flash') + ': ' + t(s.flash ? 'yes' : 'no'));
+      if (s.ev != null) lines.push(t('fEv') + ': ' + fmtEv(s.ev, true) + ' EV');
+      if (s.double) lines.push(t('fDouble'));
       shots.push({ no: noLabel(s.no, s.sub), main, lines, note: s.note || '', image });
     }
     const meta = rollMeta(roll);
@@ -2152,21 +2221,28 @@
   async function makeBackup() {
     const media = await DB.all('media');
     const data = {
-      app: 'film-log', version: 1, exportedAt: new Date().toISOString(), settings: S.settings, rolls: S.rolls.concat(S.trash), shots: S.shots, folders: S.folders, tags: S.tags,
+      app: 'film-log', version: 1, exportedAt: new Date().toISOString(), settings: S.settings, rolls: allOf('rolls'), shots: allOf('shots'), folders: allOf('folders'), tags: allOf('tags'),
       media: media.map(m => ({ id: m.id, type: m.type, w: m.w, h: m.h, data: toB64(m.buf) }))
     };
     const d = new Date();
     return new File([JSON.stringify(data)], 'film-log-backup-' + d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + '.json', { type: 'application/json' });
   }
 
+  // gelöschte Einträge (deletedAt) kommen in den Papierkorb, alle anderen in die Listen
+  function splitLoaded(data) {
+    TRASH_KINDS.forEach(k => {
+      S[k] = data[k].filter(x => !x.deletedAt);
+      S.trash[k] = data[k].filter(x => x.deletedAt);
+    });
+  }
+
   async function restoreBackup(file) {
     let data;
     try { data = JSON.parse(await file.text()); } catch (e) { data = null; }
     if (!data || data.app !== 'film-log' || !Array.isArray(data.rolls) || !Array.isArray(data.shots)) { toast(t('restoreFail')); return; }
-    const ok = await ask(t('askRestore'), [
-      { label: t('restore'), value: true, kind: 'primary' },
-      { label: t('cancel'), value: null, kind: 'ghost' }
-    ], file.name);
+    const ok = await alertBox({ title: t('askRestore'), message: file.name, buttons: [
+      { label: t('cancel'), value: false, act: 'alert-cancel' },
+      { label: t('restore'), value: true, kind: 'danger', act: 'alert-ok' }] });
     if (!ok) return;
     const media = (data.media || []).map(m => ({ id: m.id, type: m.type, w: m.w, h: m.h, buf: fromB64(m.data) }));
     await DB.run(['rolls', 'shots', 'media', 'folders', 'tags'], 'readwrite', tx => {
@@ -2176,14 +2252,9 @@
     });
     urls.forEach(u => URL.revokeObjectURL(u));
     urls.clear();
-    S.rolls = data.rolls.filter(r => !r.deletedAt);
-    S.trash = data.rolls.filter(r => r.deletedAt);
-    S.shots = data.shots;
-    S.folders = data.folders || [];
-    S.tags = data.tags || [];
+    splitLoaded({ rolls: data.rolls, shots: data.shots, folders: data.folders || [], tags: data.tags || [] });
     if (data.settings) {
       if (data.settings.custom) S.settings.custom = data.settings.custom;
-      if (Array.isArray(data.settings.layouts)) S.settings.layouts = data.settings.layouts;
       if (THEMES[data.settings.theme] || data.settings.theme === 'custom') S.settings.theme = data.settings.theme;
       if (window.I18N[data.settings.lang]) S.settings.lang = data.settings.lang;
     }
@@ -2228,13 +2299,94 @@
           h('button', { class: 'line action', 'data-act': 'backup-restore', onclick: () => fileIn.click() }, t('backupRestore'))),
         h('p', { class: 'group-note' }, t('backupHint')),
         h('p', { class: 'section-label' }, t('about')),
-        group(lineBtn(t('trash'), String(S.trash.length), openTrash, { 'data-act': 'trash-open' }), lineBtn(t('changelog'), 'Alpha ' + VERSION, openChangelog, { 'data-act': 'changelog' })),
+        group(
+          lineBtn(t('trash'), String(trashCount()), openTrash, { 'data-act': 'trash-open' }),
+          lineBtn(t('feedback'), S.feedback.length ? String(S.feedback.length) : null, openFeedback, { 'data-act': 'feedback' }),
+          lineBtn(t('changelog'), 'Alpha ' + VERSION, openChangelog, { 'data-act': 'changelog' })),
         standalone ? null : h('p', { class: 'group-note' }, t('installHint')),
         fileIn
       ].filter(Boolean));
       sheet.body.scrollTop = top;
     };
     sheet.render();
+  }
+
+  // ------------------------------------------------------------ Feedback (bleibt auf dem Gerät, Teilen nur auf Wunsch)
+  function openFeedback() {
+    const sheet = openSheet({ title: t('feedback') });
+    sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('feedbackNew'), 'data-act': 'feedback-add', onclick: () => openFeedbackEdit(null) }, icon('plus')));
+    holdable(sheet.body, async (key, el) => {
+      const f = S.feedback.find(x => x.id === key.slice(3));
+      if (!f) return;
+      const a = await popMenu(el, [
+        { label: t('actEdit'), value: 'edit', icon: 'pencil' },
+        { label: t('delete'), value: 'delete', icon: 'trash', danger: true }
+      ], f.title);
+      if (a === 'edit') openFeedbackEdit(f.id);
+      else if (a === 'delete') {
+        if (!(await confirmDelete(t('askDeleteFeedback', { t: f.title })))) return;
+        await DB.del('feedback', f.id);
+        S.feedback = S.feedback.filter(x => x !== f);
+        refreshAll();
+        toast(t('deleted'));
+      }
+    });
+    sheet.render = () => {
+      sheet.setTitle(t('feedback'));
+      const list = S.feedback.slice().sort((a, b) => b.createdAt - a.createdAt);
+      sheet.body.replaceChildren(...[
+        h('p', { class: 'group-note lead' }, t('feedbackHint')),
+        list.length ? group(list.map(f => keyed(h('button', { class: 'line', 'data-feedback': f.title, onclick: () => openFeedbackEdit(f.id) },
+          h('span', { class: 'line-label two' }, h('b', null, f.title), h('small', null, [fmtDate(f.createdAt), (f.text || '').split('\n')[0]].filter(Boolean).join(', '))),
+          icon('chev')), 'fb:' + f.id))) : h('p', { class: 'empty' }, t('feedbackEmpty')),
+        list.length ? group(h('button', { class: 'line action', 'data-act': 'feedback-share', onclick: shareFeedback }, t('feedbackShare'))) : null
+      ].filter(Boolean));
+    };
+    sheet.render();
+  }
+
+  function openFeedbackEdit(id) {
+    const f = id ? S.feedback.find(x => x.id === id) : null;
+    const d = { title: f ? f.title : '', text: f ? f.text : '' };
+    const orig = JSON.stringify(d);
+    const empty = () => !d.title.trim() && !d.text.trim();
+    let saving = false;
+    const save = async () => {
+      const rec = f || { id: uid(), createdAt: Date.now() };
+      Object.assign(rec, { title: d.title.trim() || d.text.trim().split('\n')[0].slice(0, 60) || t('feedback'), text: d.text.trim(), updatedAt: Date.now(), version: VERSION });
+      await DB.put('feedback', rec);
+      if (!f) S.feedback.push(rec);
+    };
+    const sheet = openSheet({
+      title: t(f ? 'feedback' : 'feedbackNew'),
+      beforeClose: async () => {
+        if (saving || JSON.stringify(d) === orig || (!f && empty())) return true;
+        const a = await askSave(t('askSave'));
+        if (a === 'save') { try { await save(); refreshAll(); toast(t('saved')); } catch (e) { toast(t('saveFail')); return false; } return true; }
+        return a === 'discard';
+      }
+    });
+    sheet.setRight(h('button', {
+      class: 'icon-btn ok', 'data-act': 'finish', 'aria-label': t('save'), onclick: async () => {
+        haptic();
+        if (saving) return;
+        if (!f && empty()) { sheet.close(); return; }
+        saving = true;
+        try { await save(); sheet.close(); refreshAll(); toast(t('saved')); } catch (e) { saving = false; toast(t('saveFail')); }
+      }
+    }, icon('check')));
+    sheet.body.append(
+      group(line(t('fTitle'), h('input', { type: 'text', 'data-field': 'fb-title', placeholder: t('feedbackTitlePh'), value: d.title, autocomplete: 'off', enterkeyhint: 'next', oninput: e => { d.title = e.target.value; } }))),
+      group(h('textarea', { class: 'line-area tall', 'data-field': 'fb-text', placeholder: t('feedbackTextPh'), 'aria-label': t('feedbackTextPh'), value: d.text, oninput: e => { d.text = e.target.value; } })));
+  }
+
+  // alle Einträge als Textdatei über das Teilen-Menü; muss direkt im Antippen starten
+  function shareFeedback() {
+    const list = S.feedback.slice().sort((a, b) => a.createdAt - b.createdAt);
+    const text = ['Film_Log Feedback', 'Alpha ' + VERSION + ', ' + fmtDateTime(Date.now()), '']
+      .concat(list.flatMap(f => ['', f.title, fmtDateTime(f.createdAt) + (f.version ? ', Alpha ' + f.version : ''), '', f.text || ''])).join('\n') + '\n';
+    const d = new Date();
+    shareFile(new File([text], 'film-log-feedback-' + d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + '.txt', { type: 'text/plain' }));
   }
 
   // ------------------------------------------------------------ Changelog
@@ -2266,15 +2418,11 @@
     renderHome();
     try {
       await DB.open();
-      const all = await DB.all('rolls');
-      S.rolls = all.filter(r => !r.deletedAt);
-      S.trash = all.filter(r => r.deletedAt);
-      S.shots = await DB.all('shots');
-      S.folders = await DB.all('folders');
-      S.tags = await DB.all('tags');
+      splitLoaded({ rolls: await DB.all('rolls'), shots: await DB.all('shots'), folders: await DB.all('folders'), tags: await DB.all('tags') });
+      S.feedback = await DB.all('feedback');
     } catch (e) { toast(t('dbError')); }
     // Papierkorb: was länger als 30 Tage liegt, endgültig entfernen
-    for (const r of S.trash.filter(x => Date.now() - x.deletedAt > TRASH_DAYS * DAY)) { try { await deleteRoll(r.id); } catch (e) {} }
+    for (const kind of TRASH_KINDS) for (const o of S.trash[kind].filter(x => Date.now() - x.deletedAt > TRASH_DAYS * DAY)) { if (S.trash[kind].includes(o)) { try { await purge(kind, o); } catch (e) {} } }
     renderHome();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

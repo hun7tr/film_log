@@ -10,6 +10,8 @@
     aperture: ['aperture', 'f stop', 'fstop', 'f number', 'fnumber', 'av', 'blende', 'ouverture', 'apertura', 'abertura', 'diafragma'],
     focal: ['focal length', 'focal', 'focallength', 'focal length mm', 'brennweite', 'brennweite mm', 'focale', 'distancia focal'],
     flash: ['flash', 'flash used', 'flash fired', 'blitz'],
+    ev: ['exposure compensation', 'exposure bias', 'exposure comp', 'ev', 'ec', 'ev comp', 'belichtungskorrektur', 'korrektur', 'correction d exposition', 'compensation', 'compensacion', 'compensacao'],
+    double: ['double exposure', 'multiple exposure', 'multi exposure', 'double', 'doppelbelichtung', 'mehrfachbelichtung', 'double exposition', 'doble exposicion', 'dupla exposicao'],
     lat: ['latitude', 'lat', 'gps latitude', 'breite', 'breitengrad', 'latitud'],
     lon: ['longitude', 'lon', 'lng', 'long', 'gps longitude', 'lange', 'langengrad', 'longitud'],
     loc: ['location', 'coordinates', 'coords', 'gps', 'position', 'standort', 'koordinaten', 'ort', 'lieu', 'emplacement', 'ubicacion', 'coordenadas', 'local', 'localizacao'],
@@ -114,6 +116,15 @@
     if (['no', 'n', 'false', '0', 'off', 'nein', 'aus', 'non', 'nao', 'none'].includes(n)) return false;
     return null;
   }
+  // Korrektur in Drittelstufen: +1 1/3, +1.3, 1⅓, -2/3 EV -> 4, 4, 4, -2
+  function parseEv(v) {
+    let s = String(v == null ? '' : v).trim().replace(/⅓/g, ' 1/3').replace(/⅔/g, ' 2/3').replace(/−/g, '-').replace(',', '.').replace(/\s*(ev|lw|il)\s*$/i, '').trim();
+    if (!s || /^±?0$/.test(s)) return s ? 0 : null;
+    const m = s.match(/^([+\-]?)\s*(\d+(?:\.\d+)?)?\s*(?:(\d)\s*\/\s*(\d))?$/);
+    if (!m || (m[2] == null && m[3] == null)) return null;
+    const x = (m[2] ? parseFloat(m[2]) : 0) + (m[3] ? +m[3] / +m[4] : 0);
+    return (m[1] === '-' ? -1 : 1) * Math.round(x * 3);
+  }
   function parseNo(v) {
     const m = String(v == null ? '' : v).match(/(\d+)(?:\.(\d+))?/);
     return m ? { no: parseInt(m[1], 10), sub: m[2] ? parseInt(m[2], 10) : null } : null;
@@ -182,6 +193,7 @@
           no, sub: pn && pn.sub ? pn.sub : seen[no],
           shutter: parseShutter(get(r, 'shutter')), aperture: parseAperture(get(r, 'aperture')), focal: parseFocal(get(r, 'focal')),
           flash: parseFlash(get(r, 'flash')),
+          ev: parseEv(get(r, 'ev')), double: parseFlash(get(r, 'double')),
           lat: loc ? loc.lat : null, lon: loc ? loc.lon : null, acc: null,
           date: parseDate(get(r, 'date'), get(r, 'time'), mdy),
           note: get(r, 'notes')
@@ -205,5 +217,5 @@
     return out;
   }
 
-  root.FilmImport = { FIELDS, norm, parseCsv, guess, build, parseShutter, parseAperture, parseDate, parseLoc, parseFlash };
+  root.FilmImport = { FIELDS, norm, parseCsv, guess, build, parseShutter, parseAperture, parseDate, parseLoc, parseFlash, parseEv };
 })(typeof window !== 'undefined' ? window : globalThis);
