@@ -68,7 +68,7 @@ window.I18N = {
     imRoll: 'Rolle (Titel)', imLoc: 'Koordinaten (eine Spalte)',
     th_custom: 'Eigenes Theme', customEdit: 'Eigene Farben anpassen', el_bg: 'Hintergrund', el_card: 'Flächen', el_text: 'Text', el_accent: 'Akzent', el_second: 'Zähler',
     pickOnMap: 'Auf der Karte wählen', useLocation: 'Diesen Standort übernehmen', saveLayout: 'Als Layout speichern', layoutName: 'Name des Layouts', savedLayouts: 'Gespeicherte Layouts',
-    askDeleteLayout: 'Layout „{t}“ löschen?', dragHint: 'Tippen öffnet die Rolle. Nach links wischen für Bearbeiten, Löschen und Verschieben, gedrückt halten für Menü und Sortieren.',
+    askDeleteLayout: 'Layout „{t}“ löschen?', dragHint: 'Tippen öffnet die Rolle. Halten und ziehen sortiert, zwei Sekunden halten öffnet das Menü.',
     about: 'Über die App', changelog: 'Changelog', changelogSub: 'Was sich mit jeder Version geändert hat', clNew: 'Neu', clChanged: 'Geändert', clRemoved: 'Entfernt',
     simple: 'Simple Mode', shotSaved: 'Shot {n} gespeichert', record: 'Aufnehmen', add: 'Hinzufügen', locRemove: 'Standort entfernen',
     th_hell: 'Hell', th_dunkel: 'Dunkel',
@@ -76,6 +76,7 @@ window.I18N = {
     trashDays: n => 'noch ' + n + (n === 1 ? ' Tag' : ' Tage'), putBack: 'Wiederherstellen', putBackDone: 'Wiederhergestellt', purge: 'Endgültig löschen',
     emptyTrash: 'Papierkorb leeren', askEmptyTrash: 'Alle Rollen im Papierkorb endgültig löschen?', movedToTrash: 'In den Papierkorb verschoben',
     actEdit: 'Bearbeiten',
+    askTrashRoll: '„{t}“ in den Papierkorb verschieben? Dort bleibt die Rolle 30 Tage.',
     dbError: 'Der Speicher ist nicht verfügbar. Deine Daten können nicht gesichert werden.',
     saveFail: 'Speichern fehlgeschlagen.'
   },
@@ -147,7 +148,7 @@ window.I18N = {
     imRoll: 'Roll (title)', imLoc: 'Coordinates (one column)',
     th_custom: 'Custom theme', customEdit: 'Adjust custom colours', el_bg: 'Background', el_card: 'Surfaces', el_text: 'Text', el_accent: 'Accent', el_second: 'Counter',
     pickOnMap: 'Choose on the map', useLocation: 'Use this location', saveLayout: 'Save as layout', layoutName: 'Layout name', savedLayouts: 'Saved layouts',
-    askDeleteLayout: 'Delete layout “{t}”?', dragHint: 'Tap opens the roll. Swipe left to edit, delete or move it, press and hold for the menu and to reorder.',
+    askDeleteLayout: 'Delete layout “{t}”?', dragHint: 'Tap opens the roll. Hold and drag to reorder, hold for two seconds to open the menu.',
     about: 'About the app', changelog: 'Changelog', changelogSub: 'What changed with each version', clNew: 'New', clChanged: 'Changed', clRemoved: 'Removed',
     simple: 'Simple Mode', shotSaved: 'Shot {n} saved', record: 'Record', add: 'Add', locRemove: 'Remove location',
     th_hell: 'Light', th_dunkel: 'Dark',
@@ -155,6 +156,7 @@ window.I18N = {
     trashDays: n => n + (n === 1 ? ' day left' : ' days left'), putBack: 'Restore', putBackDone: 'Restored', purge: 'Delete for good',
     emptyTrash: 'Empty bin', askEmptyTrash: 'Delete all rolls in the bin for good?', movedToTrash: 'Moved to the bin',
     actEdit: 'Edit',
+    askTrashRoll: 'Move “{t}” to the bin? The roll stays there for 30 days.',
     dbError: 'Storage is unavailable. Your data cannot be saved.',
     saveFail: 'Saving failed.'
   }
@@ -230,7 +232,7 @@ Object.assign(window.I18N, {
     imRoll: 'Pellicule (titre)', imLoc: 'Coordonnées (une colonne)',
     th_custom: 'Thème personnalisé', customEdit: 'Ajuster mes couleurs', el_bg: 'Fond', el_card: 'Surfaces', el_text: 'Texte', el_accent: 'Accent', el_second: 'Compteur',
     pickOnMap: 'Choisir sur la carte', useLocation: 'Utiliser ce lieu', saveLayout: 'Enregistrer comme palette', layoutName: 'Nom de la palette', savedLayouts: 'Palettes enregistrées',
-    askDeleteLayout: 'Supprimer la palette « {t} » ?', dragHint: 'Touchez pour ouvrir. Balayez vers la gauche pour modifier, supprimer ou déplacer, appui long pour le menu et le tri.',
+    askDeleteLayout: 'Supprimer la palette « {t} » ?', dragHint: 'Touchez pour ouvrir. Maintenez et glissez pour trier, maintenez deux secondes pour ouvrir le menu.',
     about: 'À propos', changelog: 'Changelog', changelogSub: 'Ce qui a changé à chaque version', clNew: 'Nouveau', clChanged: 'Modifié', clRemoved: 'Supprimé',
     simple: 'Simple Mode', shotSaved: 'Vue {n} enregistrée', record: 'Enregistrer', add: 'Ajouter', locRemove: 'Supprimer le lieu',
     th_hell: 'Clair', th_dunkel: 'Sombre',
@@ -238,6 +240,7 @@ Object.assign(window.I18N, {
     trashDays: n => 'encore ' + n + (n === 1 ? ' jour' : ' jours'), putBack: 'Restaurer', putBackDone: 'Restaurée', purge: 'Supprimer définitivement',
     emptyTrash: 'Vider la corbeille', askEmptyTrash: 'Supprimer définitivement toutes les pellicules de la corbeille ?', movedToTrash: 'Déplacée dans la corbeille',
     actEdit: 'Modifier',
+    askTrashRoll: 'Déplacer « {t} » dans la corbeille ? La pellicule y reste 30 jours.',
     dbError: 'Le stockage est indisponible. Tes données ne peuvent pas être enregistrées.',
     saveFail: 'Échec de l’enregistrement.'
   },
@@ -309,7 +312,7 @@ Object.assign(window.I18N, {
     imRoll: 'Carrete (título)', imLoc: 'Coordenadas (una columna)',
     th_custom: 'Tema propio', customEdit: 'Ajustar mis colores', el_bg: 'Fondo', el_card: 'Superficies', el_text: 'Texto', el_accent: 'Acento', el_second: 'Contador',
     pickOnMap: 'Elegir en el mapa', useLocation: 'Usar esta ubicación', saveLayout: 'Guardar como paleta', layoutName: 'Nombre de la paleta', savedLayouts: 'Paletas guardadas',
-    askDeleteLayout: '¿Eliminar la paleta «{t}»?', dragHint: 'Toca para abrir. Desliza a la izquierda para editar, eliminar o mover, mantén pulsado para el menú y ordenar.',
+    askDeleteLayout: '¿Eliminar la paleta «{t}»?', dragHint: 'Toca para abrir. Mantén y arrastra para ordenar, mantén dos segundos para abrir el menú.',
     about: 'Acerca de la app', changelog: 'Changelog', changelogSub: 'Qué cambió en cada versión', clNew: 'Nuevo', clChanged: 'Cambiado', clRemoved: 'Eliminado',
     simple: 'Simple Mode', shotSaved: 'Toma {n} guardada', record: 'Grabar', add: 'Añadir', locRemove: 'Quitar ubicación',
     th_hell: 'Claro', th_dunkel: 'Oscuro',
@@ -317,6 +320,7 @@ Object.assign(window.I18N, {
     trashDays: n => (n === 1 ? 'queda ' : 'quedan ') + n + (n === 1 ? ' día' : ' días'), putBack: 'Restaurar', putBackDone: 'Restaurado', purge: 'Eliminar definitivamente',
     emptyTrash: 'Vaciar papelera', askEmptyTrash: '¿Eliminar definitivamente todos los carretes de la papelera?', movedToTrash: 'Movido a la papelera',
     actEdit: 'Editar',
+    askTrashRoll: '¿Mover «{t}» a la papelera? El carrete se queda allí 30 días.',
     dbError: 'El almacenamiento no está disponible. Tus datos no se pueden guardar.',
     saveFail: 'No se pudo guardar.'
   },
@@ -388,7 +392,7 @@ Object.assign(window.I18N, {
     imRoll: 'Rolo (título)', imLoc: 'Coordenadas (uma coluna)',
     th_custom: 'Tema próprio', customEdit: 'Ajustar minhas cores', el_bg: 'Fundo', el_card: 'Superfícies', el_text: 'Texto', el_accent: 'Destaque', el_second: 'Contador',
     pickOnMap: 'Escolher no mapa', useLocation: 'Usar este local', saveLayout: 'Salvar como paleta', layoutName: 'Nome da paleta', savedLayouts: 'Paletas salvas',
-    askDeleteLayout: 'Excluir a paleta “{t}”?', dragHint: 'Toque para abrir. Deslize para a esquerda para editar, excluir ou mover, segure para o menu e para ordenar.',
+    askDeleteLayout: 'Excluir a paleta “{t}”?', dragHint: 'Toque para abrir. Segure e arraste para ordenar, segure por dois segundos para abrir o menu.',
     about: 'Sobre o app', changelog: 'Changelog', changelogSub: 'O que mudou em cada versão', clNew: 'Novo', clChanged: 'Alterado', clRemoved: 'Removido',
     simple: 'Simple Mode', shotSaved: 'Foto {n} salva', record: 'Gravar', add: 'Adicionar', locRemove: 'Remover local',
     th_hell: 'Claro', th_dunkel: 'Escuro',
@@ -396,6 +400,7 @@ Object.assign(window.I18N, {
     trashDays: n => (n === 1 ? 'resta ' : 'restam ') + n + (n === 1 ? ' dia' : ' dias'), putBack: 'Restaurar', putBackDone: 'Restaurado', purge: 'Excluir definitivamente',
     emptyTrash: 'Esvaziar lixeira', askEmptyTrash: 'Excluir definitivamente todos os rolos da lixeira?', movedToTrash: 'Movido para a lixeira',
     actEdit: 'Editar',
+    askTrashRoll: 'Mover “{t}” para a lixeira? O rolo fica lá por 30 dias.',
     dbError: 'O armazenamento está indisponível. Seus dados não podem ser salvos.',
     saveFail: 'Falha ao salvar.'
   }

@@ -6,7 +6,7 @@
     hell: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] },
     dunkel: { bar: '#161617', colors: ['#161617', '#2A2A2D', '#3D3D42', '#9C9BA1', '#FF7A3D'], pdf: [224, 98, 40] }
   };
-  const VERSION = '0.11';
+  const VERSION = '0.12';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
@@ -463,6 +463,7 @@
     sheet.body.append(rollForm(d));
     if (roll) sheet.body.append(group(h('button', {
       class: 'line danger', 'data-act': 'roll-delete', onclick: async () => {
+        if (!(await confirmDelete(t('askTrashRoll', { t: roll.title })))) return;
         saving = true;
         await trashRoll(roll.id);
         sheet.close();
@@ -519,81 +520,14 @@
       s.thumb ? h('img', { class: 'shot-thumb', src: s.thumb, alt: '' }) : h('span'));
   }
 
-  // Zeile, die sich nach links wischen lässt; dahinter blenden runde Aktionsknöpfe ein
-  const act = (cls, ic, label, run) => ({ cls, icon: ic, label, run });
-  const actEdit = fn => act('edit', 'pencil', t('actEdit'), fn);
-  const actDel = fn => act('del', 'trash', t('delete'), fn);
-  function swipeRow(row, key, actions) {
-    row.classList.add('row-main');
-    const el = h('div', { class: 'srow', 'data-drag': key },
-      h('div', { class: 'row-acts' }, actions.map(a => h('button', { class: 'row-act ' + a.cls, 'data-act': 'swipe-' + a.cls, onclick: e => { e.stopPropagation(); el.classList.remove('open'); a.run(); } },
-        h('i', null, icon(a.icon)), h('span', null, a.label)))),
-      row);
-    el.style.setProperty('--w', (actions.length * 70 + 14) + 'px');
-    return el;
-  }
-  function swipeable(box) {
-    let sw = null;
-    const closeAll = except => box.querySelectorAll('.srow.open').forEach(e => { if (e !== except) e.classList.remove('open'); });
-    box.addEventListener('pointerdown', e => {
-      const el = e.target.closest('.srow');
-      closeAll(el);
-      if (!el || e.target.closest('.row-acts')) return;
-      const W = parseFloat(el.style.getPropertyValue('--w')) || 84;
-      sw = { el, W, main: el.querySelector('.row-main'), x: e.clientX, y: e.clientY, id: e.pointerId, on: false, base: el.classList.contains('open') ? -W : 0, pos: 0 };
-    });
-    box.addEventListener('pointermove', e => {
-      if (!sw || e.pointerId !== sw.id) return;
-      const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
-      if (!sw.on) {
-        if (sw.el.classList.contains('dragging') || Math.abs(dy) > 10) { sw = null; return; }
-        if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
-        sw.on = true;
-        sw.el.classList.add('swiping');
-        try { box.setPointerCapture(sw.id); } catch (err) {}
-      }
-      // die Zeile folgt dem Finger nach links aus der Karte heraus; hinter den Knöpfen wird der Zug schwerer
-      let pos = Math.min(0, sw.base + dx);
-      if (pos < -sw.W) pos = -sw.W - (-pos - sw.W) * 0.4;
-      sw.pos = pos;
-      sw.main.style.transform = 'translateX(' + pos + 'px)';
-      sw.el.style.setProperty('--p', Math.min(1, -pos / sw.W).toFixed(3));
-    });
-    const up = e => {
-      if (!sw || e.pointerId !== sw.id) return;
-      const s = sw;
-      sw = null;
-      if (!s.on) return;
-      s.el.classList.remove('swiping');
-      s.main.style.transform = '';
-      s.el.style.removeProperty('--p');
-      s.el.classList.toggle('open', s.pos < -s.W * 0.4);
-      s.el._noClickUntil = Date.now() + 400;
-    };
-    box.addEventListener('pointerup', up);
-    box.addEventListener('pointercancel', up);
-    box.addEventListener('touchmove', e => { if (sw && sw.on) e.preventDefault(); }, { passive: false });
-    box.addEventListener('click', e => {
-      const el = e.target.closest('.srow');
-      if (el && el.classList.contains('open') && !e.target.closest('.row-acts')) { el.classList.remove('open'); e.stopPropagation(); e.preventDefault(); }
-    }, true);
-  }
   async function removeFolder(id) {
     for (const r of S.rolls) if (r.folderId === id) { r.folderId = null; await DB.put('rolls', r); }
     await DB.del('folders', id);
     S.folders = S.folders.filter(x => x.id !== id);
   }
-  function rollLine(r) {
-    const move = r.archived
-      ? act('move', 'tabExport', t('export'), () => { stack.slice().forEach(s => s.close()); exportPre = r.id; showTab('export'); })
-      : act('move', 'tabArchive', t('archive'), async () => { r.archived = true; await DB.put('rolls', r); refreshAll(); toast(t('archived')); });
-    return swipeRow(rollRow(r, () => openRoll(r.id)), 'r:' + r.id, [
-      actEdit(() => openRollEdit(r.id)),
-      actDel(async () => { await trashRoll(r.id); refreshAll(); toast(t('movedToTrash')); }),
-      move]);
-  }
+  const rollLine = r => keyed(rollRow(r, () => openRoll(r.id)), 'r:' + r.id);
   async function removeShotAsk(s) {
-    const ok = await ask(t('askDeleteShot', { n: noLabel(s.no, s.sub) }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+    const ok = await confirmDelete(t('askDeleteShot', { n: noLabel(s.no, s.sub) }));
     if (!ok) return;
     await dropMedia(s.photoId);
     await dropMedia(s.audioId);
@@ -602,7 +536,8 @@
     refreshAll();
     toast(t('deleted'));
   }
-  const shotLine = s => swipeRow(shotRow(s), 's:' + s.id, [actEdit(() => openShot(s.rollId, s.id)), actDel(() => removeShotAsk(s))]);
+  const keyed = (row, key) => { row.dataset.drag = key; return row; };
+  const shotLine = s => keyed(shotRow(s), 's:' + s.id);
 
   function openList(kind, host) {
     const sheet = host || openSheet({ title: t(kind) });
@@ -623,7 +558,6 @@
       } : null,
       onHold: keyMenu
     });
-    swipeable(sheet.body);
     sheet.render = () => {
       sheet.setTitle(t(kind));
       if (kind === 'active') {
@@ -640,7 +574,7 @@
         round('add-folder', 'plus', t('newFolder'), addMenu)));
       const items = archiveItems();
       const kids = items.map(it => it.folder
-        ? swipeRow(folderRow(it.obj, () => openFolder(it.obj.id)), it.key, [actEdit(() => folderMenu(it.obj.id)), actDel(async () => { await removeFolder(it.obj.id); refreshAll(); toast(t('deleted')); })])
+        ? keyed(folderRow(it.obj, () => openFolder(it.obj.id)), it.key)
         : rollLine(it.obj));
       if (kids.length) sheet.body.replaceChildren(group(kids), h('p', { class: 'hint drag-hint' }, t('dragHint')));
       else sheet.body.replaceChildren(h('p', { class: 'empty' }, t('emptyArchive')));
@@ -648,23 +582,114 @@
     sheet.render();
   }
 
+  // ------------------------------------------------------------ Aufklappmenü und Rückfrage im iOS-Stil
+  let pointerDown = false;
+  window.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+  window.addEventListener('pointerup', () => { pointerDown = false; }, true);
+  window.addEventListener('pointercancel', () => { pointerDown = false; }, true);
+
+  // Menü, das neben dem angetippten Element aufklappt. items: [{label, value, icon, danger, checked}]
+  function popMenu(anchor, items, title) {
+    return new Promise(resolve => {
+      // öffnet sich das Menü unter einem noch liegenden Finger, zählt erst der nächste Tipp
+      let done = false, armed = !pointerDown;
+      const finish = v => {
+        if (done) return;
+        done = true;
+        layer.classList.remove('open');
+        setTimeout(() => layer.remove(), 220);
+        resolve(v);
+      };
+      const hasCheck = items.some(i => i.checked != null);
+      const menu = h('div', { class: 'pop', role: 'menu' },
+        title ? h('div', { class: 'pop-title' }, title) : null,
+        items.map(i => h('button', { class: 'pop-item' + (i.danger ? ' danger' : ''), role: 'menuitem', 'data-value': String(i.value), onclick: () => { if (armed) finish(i.value); } },
+          hasCheck ? h('span', { class: 'pop-check' }, i.checked ? icon('check') : null) : null,
+          h('span', { class: 'pop-label' }, i.label), i.icon ? icon(i.icon) : null)));
+      const layer = h('div', { class: 'pop-layer', onclick: e => { if (e.target === layer && armed) finish(null); } }, menu);
+      layers.append(layer);
+      const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 125, right: innerWidth / 2 + 125, top: innerHeight / 2, bottom: innerHeight / 2 };
+      const w = menu.offsetWidth, hh = menu.offsetHeight;
+      let top = r.bottom + 8, above = false;
+      if (top + hh > innerHeight - 20) { top = Math.max(50, r.top - hh - 8); above = true; }
+      menu.style.top = top + 'px';
+      menu.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.right - w)) + 'px';
+      menu.style.transformOrigin = (above ? 'bottom' : 'top') + ' right';
+      void layer.offsetHeight;
+      layer.classList.add('open');
+      if (!armed) window.addEventListener('pointerup', () => setTimeout(() => { armed = true; }, 80), { once: true });
+    });
+  }
+
+  // Rückfrage vor dem Löschen, aufgebaut wie die Systemabfragen von iOS
+  function confirmDelete(message, okLabel) {
+    return new Promise(resolve => {
+      let done = false;
+      const finish = v => {
+        if (done) return;
+        done = true;
+        layer.classList.remove('open');
+        setTimeout(() => layer.remove(), 200);
+        resolve(v);
+      };
+      const layer = h('div', { class: 'alert-layer' },
+        h('div', { class: 'alert', role: 'alertdialog', 'aria-modal': 'true' },
+          h('p', { class: 'alert-title' }, message),
+          h('div', { class: 'alert-btns' },
+            h('button', { 'data-act': 'alert-cancel', onclick: () => finish(false) }, t('cancel')),
+            h('button', { class: 'danger', 'data-act': 'alert-ok', onclick: () => finish(true) }, okLabel || t('delete')))));
+      layers.append(layer);
+      void layer.offsetHeight;
+      layer.classList.add('open');
+    });
+  }
+
+  // Zeilen mit data-drag: zwei Sekunden halten öffnet das Menü (für Listen ohne Sortieren)
+  function holdable(box, onHold) {
+    let st = null;
+    const stop = () => { if (!st) return; clearTimeout(st.t1); clearTimeout(st.t2); st.el.classList.remove('holding'); st = null; };
+    box.addEventListener('pointerdown', e => {
+      const el = e.target.closest('[data-drag]');
+      if (!el || !box.contains(el) || st) return;
+      const s = { el, x: e.clientX, y: e.clientY, id: e.pointerId };
+      s.t1 = setTimeout(() => el.classList.add('holding'), 350);
+      s.t2 = setTimeout(() => {
+        if (st !== s) return;
+        stop();
+        el._noClickUntil = Infinity;
+        window.addEventListener('pointerup', () => { el._noClickUntil = Date.now() + 400; }, { once: true });
+        haptic();
+        onHold(el.dataset.drag, el);
+      }, HOLD_MS);
+      st = s;
+    });
+    box.addEventListener('pointermove', e => { if (st && e.pointerId === st.id && Math.hypot(e.clientX - st.x, e.clientY - st.y) > 8) stop(); });
+    box.addEventListener('pointerup', stop);
+    box.addEventListener('pointercancel', stop);
+    box.addEventListener('contextmenu', e => { if (st) e.preventDefault(); });
+    box.addEventListener('click', e => {
+      const el = e.target.closest('[data-drag]');
+      if (el && el._noClickUntil > Date.now()) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  }
+  const HOLD_MS = 2000;
+
   // Menü einer Rolle: über die drei Punkte und über langes Halten in den Listen
   async function rollMenu(id, ctx) {
     ctx = ctx || {};
     const roll = rollById(id);
     if (!roll) return;
     const mine = S.shots.filter(s => s.rollId === id);
-    const a = await ask(roll.title, [
-      { label: t('moreEdit'), value: 'edit' },
+    const a = await popMenu(ctx.anchor, [
+      { label: t('moreEdit'), value: 'edit', icon: 'pencil' },
       { label: t('tags'), value: 'tags' },
-      mine.length ? { label: t('scans'), value: 'scans' } : null,
-      mine.some(s => s.lat != null) ? { label: t('map'), value: 'map' } : null,
-      { label: t('moreExport'), value: 'export' },
-      roll.archived ? { label: t('moreFolder'), value: 'folder' } : null,
-      roll.archived ? { label: t('moreReactivate'), value: 'reactivate' } : { label: t('moreArchive'), value: 'archive' },
-      { label: t('moreDelete'), value: 'delete', kind: 'outline' },
-      { label: t('cancel'), value: null, kind: 'ghost' }
-    ].filter(Boolean));
+      mine.length ? { label: t('scans'), value: 'scans', icon: 'image' } : null,
+      mine.some(s => s.lat != null) ? { label: t('map'), value: 'map', icon: 'map' } : null,
+      { label: t('moreExport'), value: 'export', icon: 'tabExport' },
+      roll.archived ? { label: t('moreFolder'), value: 'folder', icon: 'folder' } : null,
+      roll.archived ? { label: t('moreReactivate'), value: 'reactivate', icon: 'tabActive' } : { label: t('moreArchive'), value: 'archive', icon: 'tabArchive' },
+      { label: t('moreDelete'), value: 'delete', icon: 'trash', danger: true }
+    ].filter(Boolean), roll.title);
     if (a === 'edit') openRollEdit(id);
     else if (a === 'tags') openTags(roll, 'rolls');
     else if (a === 'scans') openScans(id);
@@ -672,13 +697,13 @@
     else if (a === 'folder') { if (await moveToFolder(roll)) { refreshAll(); toast(t('saved')); } }
     else if (a === 'export') openExport(id);
     else if (a === 'archive' || a === 'reactivate') {
-      if (ctx.flush) ctx.flush();
       roll.archived = a === 'archive';
       await DB.put('rolls', roll);
       if (ctx.close) ctx.close();
       refreshAll();
       toast(t(a === 'archive' ? 'archived' : 'reactivated'));
     } else if (a === 'delete') {
+      if (!(await confirmDelete(t('askTrashRoll', { t: roll.title })))) return;
       await trashRoll(id);
       if (ctx.close) ctx.close();
       refreshAll();
@@ -686,27 +711,41 @@
     }
   }
 
-  async function folderMenu(id, close) {
+  async function folderMenu(id, close, anchor) {
     const f = folderById(id);
     if (!f) return;
-    const a = await ask(f.name, [
-      { label: t('rename'), value: 'rename' },
+    const a = await popMenu(anchor, [
+      { label: t('rename'), value: 'rename', icon: 'pencil' },
       { label: t('tags'), value: 'tags' },
-      { label: t('deleteFolder'), value: 'delete', kind: 'outline' },
-      { label: t('cancel'), value: null, kind: 'ghost' }
-    ]);
+      { label: t('deleteFolder'), value: 'delete', icon: 'trash', danger: true }
+    ], f.name);
     if (a === 'rename') {
       const n = await askText(t('rename'), f.name, t('folderName'));
       if (n) { f.name = n; await DB.put('folders', f); refreshAll(); }
     } else if (a === 'tags') openTags(f, 'folders');
     else if (a === 'delete') {
-      const ok = await ask(t('askDeleteFolder', { t: f.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
-      if (!ok) return;
+      if (!(await confirmDelete(t('askDeleteFolder', { t: f.name })))) return;
       await removeFolder(id);
       if (close) close();
       refreshAll();
+      toast(t('deleted'));
     }
   }
+
+  async function shotMenu(id, anchor) {
+    const s = S.shots.find(x => x.id === id);
+    if (!s) return;
+    const roll = rollById(s.rollId) || { title: '' };
+    const a = await popMenu(anchor, [
+      { label: t('actEdit'), value: 'edit', icon: 'pencil' },
+      s.lat != null ? { label: t('showOnMap'), value: 'map', icon: 'map' } : null,
+      { label: t('delete'), value: 'delete', icon: 'trash', danger: true }
+    ].filter(Boolean), t('shot') + ' ' + noLabel(s.no, s.sub));
+    if (a === 'edit') openShot(s.rollId, s.id);
+    else if (a === 'map') openMap(roll.title, [s]);
+    else if (a === 'delete') removeShotAsk(s);
+  }
+  const keyMenu = (key, el) => (key[0] === 'f' ? folderMenu(key.slice(2), null, el) : key[0] === 's' ? shotMenu(key.slice(2), el) : rollMenu(key.slice(2), { anchor: el }));
 
   // leichtes haptisches Feedback: Vibration auf Android, auf dem iPhone über einen unsichtbaren Schalter
   function haptic() {
@@ -731,14 +770,14 @@
     if (!roll) return;
     const sheet = openSheet({});
     sheet.rollId = id;
-    sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: () => rollMenu(id, { close: () => sheet.close() }) }, icon('more')));
+    sheet.setRight(h('button', { class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: e => rollMenu(id, { close: () => sheet.close(), anchor: e.currentTarget }) }, icon('more')));
     const heading = h('h2', { class: 'roll-title' });
     const subline = h('button', { class: 'roll-sub', 'data-act': 'roll-edit', onclick: () => openRollEdit(id) });
     const tagLine = h('div', { class: 'tags-block' });
     const info = h('p', { class: 'roll-info' });
     const list = h('div', { class: 'shots' });
     sheet.body.append(heading, subline, tagLine, info, list);
-    swipeable(list);
+    holdable(list, keyMenu);
 
     sheet.render = () => {
       if (!rollById(id)) { sheet.close(); return; }
@@ -820,12 +859,12 @@
           class: 'line', 'data-trash': r.title, onclick: async () => {
             const a = await ask(r.title, [{ label: t('putBack'), value: 'back', kind: 'primary' }, { label: t('purge'), value: 'purge', kind: 'outline' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
             if (a === 'back') { await restoreRoll(r); refreshAll(); toast(t('putBackDone')); }
-            else if (a === 'purge') { await deleteRoll(r.id); refreshAll(); toast(t('deleted')); }
+            else if (a === 'purge') { if (!(await confirmDelete(t('askDeleteRoll', { t: r.title })))) return; await deleteRoll(r.id); refreshAll(); toast(t('deleted')); }
           }
         }, h('span', { class: 'line-label two' }, h('b', null, r.title), h('small', null, t('trashDays')(Math.max(1, Math.ceil((r.deletedAt + TRASH_DAYS * DAY - Date.now()) / DAY))))), icon('chev')))) : h('p', { class: 'empty' }, t('trashEmpty')),
         list.length ? group(h('button', {
           class: 'line danger', 'data-act': 'trash-empty', onclick: async () => {
-            const ok = await ask(t('askEmptyTrash'), [{ label: t('emptyTrash'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+            const ok = await confirmDelete(t('askEmptyTrash'), t('emptyTrash'));
             if (!ok) return;
             for (const r of S.trash.slice()) await deleteRoll(r.id);
             refreshAll();
@@ -1135,10 +1174,7 @@
     }
 
     async function removeShot() {
-      const ok = await ask(t('askDeleteShot', { n: noLabel(shot.no, shot.sub) }), [
-        { label: t('delete'), value: true, kind: 'primary' },
-        { label: t('cancel'), value: null, kind: 'ghost' }
-      ]);
+      const ok = await confirmDelete(t('askDeleteShot', { n: noLabel(shot.no, shot.sub) }));
       if (!ok) return;
       saving = true;
       await dropMedia(shot.photoId);
@@ -1318,7 +1354,7 @@
     const save = async () => { await DB.put(store, target); refreshAll(); };
     const has = id => (target.tags || []).includes(id);
     async function removeTag(x) {
-      const ok = await ask(t('askDeleteTag', { t: x.name }), [{ label: t('delete'), value: true, kind: 'primary' }, { label: t('cancel'), value: null, kind: 'ghost' }]);
+      const ok = await confirmDelete(t('askDeleteTag', { t: x.name }));
       if (!ok) return;
       for (const [st, list] of [['rolls', S.rolls], ['folders', S.folders]]) {
         for (const o of list) if ((o.tags || []).includes(x.id)) { o.tags = o.tags.filter(i => i !== x.id); await DB.put(st, o); }
@@ -1368,13 +1404,12 @@
   function openFolder(id) {
     const sheet = openSheet({});
     sheet.setRight(h('button', {
-      class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: () => folderMenu(id, () => sheet.close())
+      class: 'icon-btn', 'aria-label': t('more'), 'data-act': 'more', onclick: e => folderMenu(id, () => sheet.close(), e.currentTarget)
     }, icon('more')));
     sortable(sheet.body, {
       onMove: async (key, index) => { await reorderTo(byOrder(archivedRolls().filter(r => r.folderId === id)).map(o => ({ obj: o, folder: false, key: 'r:' + o.id })), key, index); refreshAll(); },
       onHold: keyMenu
     });
-    swipeable(sheet.body);
     sheet.render = () => {
       const f = folderById(id);
       if (!f) { sheet.close(); return; }
@@ -1816,7 +1851,6 @@
     for (let k = 0; k < a.length; k++) if (a[k].obj.order !== k) { a[k].obj.order = k; await DB.put(a[k].folder ? 'folders' : 'rolls', a[k].obj); }
   }
   const activeItems = () => byOrder(S.rolls.filter(r => !r.archived).sort((a, b) => b.createdAt - a.createdAt)).map(o => ({ obj: o, folder: false, key: 'r:' + o.id }));
-  const keyMenu = key => (key[0] === 'f' ? folderMenu(key.slice(2)) : rollMenu(key.slice(2)));
 
   /* Kacheln mit data-drag: langes Halten hebt eine Kachel an. Loslassen ohne Bewegung öffnet ihr Menü,
      Ziehen sortiert sie; die anderen Kacheln rücken dabei zur Seite. cb: {onMove(key, index), onInto(key, folderKey), onHold(key)} */
@@ -1828,10 +1862,11 @@
       const s = st;
       st = null;
       clearTimeout(s.timer);
+      clearTimeout(s.menuTimer);
       if (!s.active) return;
       s.el._noClickUntil = Date.now() + 450;
       if (!commit) { reset(); return; }
-      if (!s.moved) { reset(); if (cb.onHold) cb.onHold(s.el.dataset.drag); return; }
+      if (!s.moved) { reset(); return; }
       if (s.into) { reset(); if (cb.onInto) cb.onInto(s.el.dataset.drag, s.into.dataset.drag); return; }
       if (s.index === s.i0) { reset(); return; }
       // in die Lücke einrasten, dann speichern
@@ -1856,6 +1891,18 @@
         haptic();
         try { box.setPointerCapture(s.id); } catch (err) {}
       }, 420);
+      // zwei Sekunden halten, ohne zu ziehen: Menü öffnen, noch während der Finger liegt
+      s.menuTimer = setTimeout(() => {
+        if (st !== s || s.moved || !cb.onHold) return;
+        st = null;
+        clearTimeout(s.timer);
+        reset();
+        try { box.releasePointerCapture(s.id); } catch (err) {}
+        el._noClickUntil = Infinity;
+        window.addEventListener('pointerup', () => { el._noClickUntil = Date.now() + 400; }, { once: true });
+        haptic();
+        cb.onHold(el.dataset.drag, el);
+      }, HOLD_MS);
       st = s;
     });
     box.addEventListener('pointermove', e => {
@@ -2015,7 +2062,7 @@
   function openExport(preId, host) {
     let sel = preId || null, format = 'pdf', busy = false;
     const sheet = host || openSheet({ title: t('export') });
-    swipeable(sheet.body);
+    holdable(sheet.body, keyMenu);
     const go = h('button', { class: 'btn primary', 'data-act': 'export', onclick: run });
     sheet.foot.replaceChildren(go);
 
@@ -2052,9 +2099,9 @@
         groups.forEach(([key, rolls]) => {
           if (!rolls.length) return;
           kids.push(h('p', { class: 'section-label' }, t(key)));
-          kids.push(group(rolls.sort((a, b) => b.createdAt - a.createdAt).map(r => swipeRow(
+          kids.push(group(rolls.sort((a, b) => b.createdAt - a.createdAt).map(r => keyed(
             rollRow(r, () => { sel = r.id; sheet.render(); }, sel === r.id ? icon('check') : h('span', { class: 'line-gap' }), ' pick' + (sel === r.id ? ' on' : '')),
-            'r:' + r.id, [actEdit(() => openRollEdit(r.id)), actDel(async () => { await trashRoll(r.id); refreshAll(); toast(t('movedToTrash')); })]))));
+            'r:' + r.id))));
         });
       }
       const top = sheet.body.scrollTop;
@@ -2076,6 +2123,8 @@
   function applySettings() {
     document.documentElement.dataset.theme = S.settings.theme;
     document.documentElement.lang = S.settings.lang;
+    // Systemelemente wie Auswahlmenüs und Datumsfelder folgen dem Theme der App, nicht dem des iPhones
+    document.documentElement.style.colorScheme = S.settings.theme === 'dunkel' || (S.settings.theme === 'custom' && lumHex(customColors().bg) < 0.2) ? 'dark' : 'light';
     const m = document.querySelector('meta[name="theme-color"]');
     const custom = S.settings.theme === 'custom' ? customVars(customColors()) : null;
     Object.keys(customVars(CUSTOM_DEFAULT)).forEach(k => { if (custom) document.documentElement.style.setProperty(k, custom[k]); else document.documentElement.style.removeProperty(k); });
@@ -2149,20 +2198,24 @@
     sheet.render = () => {
       sheet.setTitle(t('settings'));
       const standalone = navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-      const themeLine = (k, onTap) => h('button', { class: 'line pick' + (S.settings.theme === k ? ' on' : ''), 'data-theme-pick': k, onclick: onTap },
-        h('span', { class: 'line-label' }, t('th_' + k)),
-        h('span', { class: 'swatches' }, (k === 'custom' ? CUSTOM_KEYS.map(c => customColors()[c]) : THEMES[k].colors).map(c => h('i', { style: 'background:' + c }))),
-        k === 'custom' ? icon('chev') : S.settings.theme === k ? icon('check') : h('span', { class: 'line-gap' }));
-      const lang = h('select', { 'data-field': 'lang', 'aria-label': t('setLang'), onchange: e => { S.settings.lang = e.target.value; saveSettings(); } },
-        [['de', 'Deutsch'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português']].map(([k, name]) => h('option', { value: k }, name)));
-      lang.value = S.settings.lang;
+      const LANGS = [['de', 'Deutsch'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português']];
+      const themeKeys = Object.keys(THEMES).concat('custom');
+      const pickTheme = async e => {
+        const k = await popMenu(e.currentTarget, themeKeys.map(x => ({ label: t('th_' + x), value: x, checked: S.settings.theme === x })));
+        if (!k) return;
+        if (k === 'custom') openCustom();
+        S.settings.theme = k;
+        saveSettings();
+      };
+      const pickLang = async e => {
+        const k = await popMenu(e.currentTarget, LANGS.map(([x, name]) => ({ label: name, value: x, checked: S.settings.lang === x })));
+        if (k) { S.settings.lang = k; saveSettings(); }
+      };
       const top = sheet.body.scrollTop;
       sheet.body.replaceChildren(...[
-        h('p', { class: 'section-label' }, t('setTheme')),
         group(
-          Object.keys(THEMES).map(k => themeLine(k, () => { S.settings.theme = k; saveSettings(); })),
-          themeLine('custom', () => { openCustom(); S.settings.theme = 'custom'; saveSettings(); })),
-        group(line(t('setLang'), lang)),
+          lineBtn(t('setTheme'), t('th_' + S.settings.theme), pickTheme, { 'data-act': 'theme' }),
+          lineBtn(t('setLang'), (LANGS.find(x => x[0] === S.settings.lang) || LANGS[0])[1], pickLang, { 'data-act': 'lang' })),
         h('p', { class: 'section-label' }, t('setBackup')),
         group(
           h('button', {

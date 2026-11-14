@@ -587,3 +587,42 @@ button.line:active, .line-main:active { background: rgba(128, 128, 128, .14); }
 .step-box .group { margin-bottom: 0; }
 .step-box .group-note { margin: 0; text-align: center; }
 .flash-seg svg { width: 30px; height: 30px; color: inherit; opacity: 1; }
+
+/* ---------- Halten und Sortieren ohne Wischen ---------- */
+[data-drag] { -webkit-touch-callout: none; touch-action: pan-y; transition: transform .2s cubic-bezier(.2, .8, .2, 1), scale .2s, box-shadow .2s; }
+[data-drag].holding { scale: .98; }
+[data-drag].dragging { position: relative; z-index: 5; pointer-events: none; transition: scale .2s, box-shadow .2s; scale: 1.03; border-radius: 14px; background: var(--card); box-shadow: 0 14px 30px rgba(0, 0, 0, .3) !important; }
+[data-drag].dragging.over-folder { scale: .88; opacity: .8; }
+[data-drag].drop-into { box-shadow: inset 0 0 0 2.5px var(--accent) !important; border-radius: 14px; }
+
+/* ---------- Aufklappmenü ---------- */
+.pop-layer { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0); transition: background .2s; }
+.pop-layer.open { background: rgba(0, 0, 0, .22); }
+.pop {
+  position: absolute; min-width: 232px; max-width: 290px; max-height: 72vh; overflow-y: auto; border-radius: 18px;
+  background: var(--card); background: color-mix(in srgb, var(--card) 86%, transparent);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: 0 20px 54px rgba(0, 0, 0, .36), inset 0 0 0 1px rgba(128, 128, 128, .22);
+  transform: scale(.5); opacity: 0; transition: transform .24s cubic-bezier(.3, 1.3, .5, 1), opacity .16s;
+}
+.pop-layer.open .pop { transform: scale(1); opacity: 1; }
+.pop-title { padding: 11px 16px 9px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pop-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 0 16px; font-size: 17px; text-align: left; box-shadow: inset 0 1px 0 var(--line); }
+.pop > .pop-item:first-child { box-shadow: none; }
+.pop-item:active { background: rgba(128, 128, 128, .18); }
+.pop-label { flex: 1; min-width: 0; }
+.pop-item svg { flex: none; width: 19px; height: 19px; }
+.pop-check { flex: none; width: 20px; display: grid; place-items: center; color: var(--accent); }
+.pop-item.danger { color: var(--red); }
+
+/* ---------- Rückfrage wie eine Systemabfrage ---------- */
+.alert-layer { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, 0); transition: background .2s; }
+.alert-layer.open { background: rgba(0, 0, 0, .34); }
+.alert { width: min(290px, 84vw); border-radius: 22px; overflow: hidden; text-align: center; background: var(--sheet); box-shadow: 0 20px 60px rgba(0, 0, 0, .4), inset 0 0 0 1px rgba(128, 128, 128, .18); transform: scale(1.14); opacity: 0; transition: transform .2s cubic-bezier(.2, .8, .2, 1), opacity .16s; }
+.alert-layer.open .alert { transform: scale(1); opacity: 1; }
+.alert-title { padding: 22px 18px 20px; font-size: 17px; font-weight: 600; line-height: 1.3; }
+.alert-btns { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+.alert-btns button { height: 48px; font-size: 17px; text-align: center; color: var(--accent); }
+.alert-btns button + button { border-left: 1px solid var(--line); }
+.alert-btns button.danger { color: var(--red); font-weight: 600; }
+.alert-btns button:active { background: rgba(128, 128, 128, .16); }

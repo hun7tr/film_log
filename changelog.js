@@ -6,6 +6,20 @@
 */
 window.CHANGELOG = [
   {
+    v: '0.12', date: '2026-11-13',
+    title: { de: 'Aufklappmenüs statt Wischen, einheitliche Rückfrage beim Löschen', en: 'Popup menus instead of swiping, one confirmation for deleting' },
+    de: {
+      added: ['Aufklappmenü im Stil der iOS-Auswahlmenüs für Rollen, Ordner und Shots, auch in Export', 'Shots: Menü mit Bearbeiten, Auf der Karte zeigen und Löschen', 'Rückfrage vor jedem Löschen im Stil der Systemabfragen'],
+      changed: ['Zwei Sekunden halten öffnet das Menü, noch während der Finger liegt; wer vorher zieht, sortiert', 'Farbe und Sprache werden in den Einstellungen über ein Aufklappmenü gewählt', 'Auswahlmenüs und Datumsfelder des Systems folgen dem Theme der App'],
+      removed: ['Wischen nach links mit Aktionsknöpfen', 'Themes als Liste untereinander']
+    },
+    en: {
+      added: ['Popup menu in the style of the iOS selection menus for rolls, folders and shots, in Export too', 'Shots: menu with edit, show on map and delete', 'Confirmation before every deletion in the style of system prompts'],
+      changed: ['Holding for two seconds opens the menu while the finger is still down; dragging before that reorders', 'Colour and language are chosen from a popup menu in Settings', 'System selection menus and date fields follow the app theme'],
+      removed: ['Swiping left with action buttons', 'Themes as a list']
+    }
+  },
+  {
     v: '0.11', date: '2026-11-13',
     title: { de: 'Flüssigeres Wischen mit mehreren Aktionen, Shots als Karten, Schritt-Dialog zurück', en: 'Smoother swiping with several actions, shots as cards, step dialog is back' },
     de: {
