@@ -6,14 +6,25 @@
     hell: { bar: '#F0EEE9', colors: ['#F0EEE9', '#E7E9E7', '#B7B8B4', '#898784', '#5AA0DE'], pdf: [90, 160, 222] },
     dunkel: { bar: '#161617', colors: ['#161617', '#2A2A2D', '#3D3D42', '#9C9BA1', '#FF7A3D'], pdf: [224, 98, 40] }
   };
-  const VERSION = '0.13';
+  const VERSION = '0.14';
   const SHUTTERS = ['B', '30s', '15s', '8s', '4s', '2s', '1s', '1/2', '1/4', '1/8', '1/15', '1/30', '1/60', '1/125', '1/250', '1/500', '1/1000', '1/2000', '1/4000', '1/8000'];
   const APERTURES = ['1', '1.2', '1.4', '1.8', '2', '2.8', '3.5', '4', '5.6', '8', '11', '16', '22', '32'];
   const FOCALS = [14, 17, 20, 24, 28, 35, 40, 50, 58, 70, 85, 100, 105, 135, 150, 200, 300, 400];
   const DEFAULTS = { shutter: '1/125', aperture: '8', focal: 50, flash: false, ev: 0 };
   // Belichtungskorrektur in Drittelstufen: -9 = −3 EV … +9 = +3 EV
   const EVS = Array.from({ length: 19 }, (_, i) => i - 9);
-  const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note', 'pns', 'simple'];
+  const ROLL_KEYS = ['title', 'film', 'iso', 'ei', 'push', 'camera', 'frames', 'note', 'pns', 'simple', 'steps'];
+  // Abfragen im Shot-Dialog: Reihenfolge und Auswahl je Rolle; bei Point-and-Shoot entfallen die Belichtungswerte
+  const STEP_KEYS = ['no', 'shutter', 'aperture', 'focal', 'flash', 'corr', 'loc', 'date', 'notes', 'ref'];
+  const PNS_HIDDEN = ['shutter', 'aperture', 'focal', 'corr'];
+  // vollständige Liste [{k, on}]: unbekannte Einträge fallen weg, fehlende (auch künftige) kommen an ihre Standardstelle
+  function normSteps(list) {
+    const out = [], seen = new Set();
+    (Array.isArray(list) ? list : []).forEach(x => { if (x && STEP_KEYS.includes(x.k) && !seen.has(x.k)) { seen.add(x.k); out.push({ k: x.k, on: x.on !== false }); } });
+    STEP_KEYS.forEach((k, i) => { if (!seen.has(k)) out.splice(Math.min(i, out.length), 0, { k, on: true }); });
+    return out;
+  }
+  const activeSteps = (steps, pns) => normSteps(steps).filter(x => x.on && !(pns && PNS_HIDDEN.includes(x.k))).map(x => x.k);
 
   const S = { rolls: [], shots: [], folders: [], tags: [], feedback: [], trash: { rolls: [], shots: [], folders: [], tags: [] }, settings: { theme: 'hell', lang: 'de' } };
 
@@ -56,6 +67,7 @@
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
     pencil: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    grip: '<path d="M5 9h14M5 15h14"/>',
     chev: '<path d="M9 6l6 6-6 6"/>',
     tabActive: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/>',
     tabArchive: '<path d="M3 5h18v4H3zM5 9v10h14V9M10 13h4"/>',
@@ -431,11 +443,63 @@
     } }, PRESETS.map(n => h('option', { value: n }, n)), h('option', { value: 'other' }, t('fFramesOther')));
     frames.value = PRESETS.includes(d.frames) ? String(d.frames) : 'other';
 
+    const stepsValue = h('span', { class: 'line-value' });
+    const showSteps = () => { stepsValue.textContent = t('stepsCount')(activeSteps(d.steps, d.pns).length, normSteps(d.steps).filter(x => !(d.pns && PNS_HIDDEN.includes(x.k))).length); };
+    showSteps();
+
     return h('div', null,
       group(input('title', t('fTitle'), {}), input('film', t('fFilm'), { ph: t('fFilmPh') }), input('camera', t('fCamera'), { ph: t('fCameraPh') })),
       group(input('iso', t('fIso'), { num: true }), input('ei', t('fEi'), { num: true }), line(t('fPush'), push), line(t('fFrames'), frames), other),
-      group(lineSwitch(t('pns'), d.pns, v => { d.pns = v; }, 'pns'), lineSwitch(t('simple'), d.simple, v => { d.simple = v; }, 'simple')),
+      group(
+        lineSwitch(t('pns'), d.pns, v => { d.pns = v; showSteps(); }, 'pns'),
+        lineSwitch(t('simple'), d.simple, v => { d.simple = v; }, 'simple'),
+        lineBtn(t('stepsSetup'), stepsValue, () => { haptic(); openStepsEdit(d, showSteps); }, { 'data-act': 'steps' })),
       group(input('note', t('fNote'), {})));
+  }
+
+  // Kacheln: am Griff ziehen sortiert sofort, Antippen schaltet die Abfrage ein oder aus
+  function openStepsEdit(d, onChange) {
+    const sheet = openSheet({ title: t('stepsSetup') });
+    const box = h('div', { class: 'step-tiles' });
+    const changed = () => { render(); onChange(); };
+    sortable(box, {
+      handle: '.step-grip',
+      onMove: (key, index) => {
+        const list = normSteps(d.steps), from = list.findIndex(x => 'st:' + x.k === key);
+        const [item] = list.splice(from, 1);
+        list.splice(index, 0, item);
+        d.steps = list;
+        haptic();
+        changed();
+      }
+    });
+    function render() {
+      const list = normSteps(d.steps);
+      box.replaceChildren(...list.map(x => {
+        const locked = d.pns && PNS_HIDDEN.includes(x.k), on = x.on && !locked;
+        const toggle = () => {
+          if (locked) return;
+          haptic();
+          d.steps = normSteps(d.steps).map(y => (y.k === x.k ? { k: y.k, on: !y.on } : y));
+          changed();
+        };
+        const sub = locked ? t('stepsPns') : x.k === 'corr' ? t('fEv') + ', ' + t('fDouble') : null;
+        return h('div', { class: 'step-tile' + (on ? ' on' : '') + (locked ? ' locked' : ''), 'data-drag': 'st:' + x.k, 'data-step': x.k },
+          h('button', { class: 'step-main', role: 'checkbox', 'aria-checked': String(on), disabled: locked ? true : null, onclick: toggle },
+            h('span', { class: 'step-check' }, on ? icon('check') : null),
+            h('span', { class: 'step-name' }, h('b', null, t('st_' + x.k)), sub ? h('small', null, sub) : null)),
+          h('span', { class: 'step-grip', 'aria-label': t('stepsMove'), role: 'img' }, icon('grip')));
+      }));
+      const none = !activeSteps(d.steps, d.pns).length;
+      sheet.body.replaceChildren(...[
+        h('p', { class: 'group-note lead' }, t('stepsHint')),
+        d.simple ? h('p', { class: 'group-note lead' }, t('stepsSimple')) : null,
+        box,
+        none ? h('p', { class: 'group-note' }, t('stepsNone')) : null,
+        group(h('button', { class: 'line action', 'data-act': 'steps-reset', onclick: () => { haptic(); d.steps = normSteps(null); changed(); } }, t('stepsReset')))
+      ].filter(Boolean));
+    }
+    render();
   }
   function cleanRoll(d, fallbackTitle) {
     const o = pickRoll(d);
@@ -444,6 +508,7 @@
     o.push = o.push || 0;
     o.pns = !!o.pns;
     o.simple = !!o.simple;
+    o.steps = normSteps(o.steps);
     o.frames = o.frames > 0 ? o.frames : 36;
     return o;
   }
@@ -452,8 +517,8 @@
   function openRollEdit(id) {
     const roll = id ? rollById(id) : null;
     const fallback = roll ? roll.title : nextTitle();
-    const d = roll ? pickRoll(roll) : { title: fallback, film: '', iso: null, ei: null, push: 0, camera: '', frames: 36, note: '', pns: false, simple: false };
-    d.pns = !!d.pns; d.simple = !!d.simple;
+    const d = roll ? pickRoll(roll) : { title: fallback, film: '', iso: null, ei: null, push: 0, camera: '', frames: 36, note: '', pns: false, simple: false, steps: null };
+    d.pns = !!d.pns; d.simple = !!d.simple; d.steps = normSteps(d.steps);
     const orig = JSON.stringify(d);
     let saving = false;
     const save = async () => {
@@ -1014,12 +1079,14 @@
     const shot = shotId ? S.shots.find(s => s.id === shotId) : null;
     const isNew = !shot;
     const pns = !!roll.pns;
+    const STEPS = activeSteps(roll.steps, pns);
     const last = lastValues(rollId);
     const nn = v => (v == null ? null : v);
     // Point-and-Shoot: Zeit, Blende und Brennweite werden nicht abgefragt, vorhandene Werte bleiben aber gespeichert
     const d = isNew
       ? { no: nextNo(rollId), shutter: null, aperture: null, focal: null, flash: null, ev: null, double: null, lat: null, lon: null, acc: null, date: Date.now(), note: '', audioId: null, photoId: null, thumb: null }
       : { no: shot.no, shutter: nn(shot.shutter), aperture: nn(shot.aperture), focal: nn(shot.focal), flash: shot.flash == null ? null : !!shot.flash, ev: nn(shot.ev), double: shot.double == null ? null : !!shot.double, lat: nn(shot.lat), lon: nn(shot.lon), acc: nn(shot.acc), date: nn(shot.date), note: shot.note || '', audioId: shot.audioId || null, photoId: shot.photoId || null, thumb: shot.thumb || null };
+    if (isNew && !STEPS.includes('date')) d.date = null;
     // bei einem neuen Shot zählt der automatisch ermittelte Standort nicht als Änderung
     const snap = () => JSON.stringify(isNew ? Object.assign({}, d, { lat: 0, lon: 0, acc: 0 }) : d);
     const orig = snap();
@@ -1251,7 +1318,6 @@
     // --- Neuer Shot: Schritt für Schritt
     let wstep = 0, onRef = null;
     function buildWizard() {
-      const STEPS = pns ? ['no', 'flash', 'loc', 'date', 'notes', 'ref'] : ['no', 'shutter', 'aperture', 'focal', 'flash', 'corr', 'loc', 'date', 'notes', 'ref'];
       const wv = { shutter: last.shutter, aperture: last.aperture, focal: last.focal, flash: !!last.flash, ev: last.ev == null ? 0 : last.ev, double: null };
       const lists = { shutter: [SHUTTERS, v => v], aperture: [APERTURES, fmtAperture], focal: [FOCALS, fmtFocal] };
       sheet.body.classList.add('steps');
@@ -1346,6 +1412,8 @@
           h('button', { class: 'btn primary', 'data-act': lastStep ? 'finish' : 'next', onclick: () => { haptic(); commit(key); go(wstep + 1); } }, t(lastStep ? 'finish' : 'next')));
       }
       onRef = () => { if (STEPS[wstep] === 'ref') render(); };
+      // alle Abfragen aus: sofort speichern
+      if (!STEPS.length) { const n = noLabel(d.no, predictedSub()); finish().then(() => { if (sheet.closed) toast(t('shotSaved', { n })); }); return; }
       render();
     }
 
@@ -1401,7 +1469,7 @@
     }
     if (d.audioId) mediaUrl(d.audioId);
     updateNo(); updateLoc(); updateRef(); renderAudio();
-    if (isNew) locate();
+    if (isNew && STEPS.includes('loc')) locate();
   }
 
   // ------------------------------------------------------------ Tags
@@ -1943,7 +2011,10 @@
       const el = e.target.closest('[data-drag]');
       if (!el || !box.contains(el) || st) return;
       const s = { el, y: e.clientY, x: e.clientX, id: e.pointerId, active: false, moved: false, into: null };
-      s.timer = setTimeout(() => {
+      const now = cb.handle && e.target.closest(cb.handle);
+      if (cb.handle && !now) return;
+      // am Griff sofort, sonst nach kurzem Halten; sofort heißt: noch bevor die erste Bewegung ankommt
+      const activate = () => {
         if (st !== s) return;
         s.list = [...box.querySelectorAll('[data-drag]')];
         s.rects = s.list.map(t => { const r = t.getBoundingClientRect(); return { top: r.top, h: r.height }; });
@@ -1955,7 +2026,8 @@
         el.classList.add('dragging');
         haptic();
         try { box.setPointerCapture(s.id); } catch (err) {}
-      }, 420);
+      };
+      if (!now) s.timer = setTimeout(activate, 420);
       // eine Sekunde halten, ohne zu ziehen: Menü öffnen, noch während der Finger liegt
       s.menuTimer = setTimeout(() => {
         if (st !== s || s.moved || !cb.onHold) return;
@@ -1969,6 +2041,7 @@
         cb.onHold(el.dataset.drag, el);
       }, HOLD_MS);
       st = s;
+      if (now) activate();
     });
     box.addEventListener('pointermove', e => {
       if (!st || e.pointerId !== st.id) return;

@@ -6,6 +6,38 @@
 */
 window.CHANGELOG = [
   {
+    v: '0.14', date: '2026-11-16',
+    title: { de: 'Abfragen im Shot-Dialog je Rolle einstellbar', en: 'Shot dialog questions configurable per roll' },
+    de: {
+      added: [
+        'Im Rollenformular: „Abfragen im Shot-Dialog“ mit Kacheln für jede Abfrage, per Haken ein- und ausschaltbar und am Griff sortierbar',
+        'Die Einstellung gilt nur für die jeweilige Rolle; neue Rollen starten mit allen Abfragen in der Standardreihenfolge',
+        'Knopf zum Zurücksetzen auf alle Abfragen in Standardreihenfolge'
+      ],
+      changed: [
+        'Der Dialog für neue Shots zeigt nur die eingeschalteten Abfragen in der gewählten Reihenfolge',
+        'Ausgeschaltete Felder bleiben leer; ausgeschalteter Standort oder ausgeschaltetes Datum wird gar nicht erfasst',
+        'Sind alle Abfragen aus, wird ein neuer Shot sofort gespeichert',
+        'Sortieren lässt sich in der Kachelliste über den Griff sofort, ohne vorheriges Halten'
+      ],
+      removed: []
+    },
+    en: {
+      added: [
+        'In the roll form: “Questions in the shot dialog” with a tile per question, switched on and off by a tick and reordered by its handle',
+        'The setting belongs to each roll; new rolls start with every question in the default order',
+        'Button to reset to all questions in the default order'
+      ],
+      changed: [
+        'The new-shot dialog shows only the questions that are on, in the chosen order',
+        'Fields turned off stay empty; location or date turned off are not recorded at all',
+        'With every question off, a new shot is saved right away',
+        'Tiles reorder straight from their handle, without holding first'
+      ],
+      removed: []
+    }
+  },
+  {
     v: '0.13', date: '2026-11-14',
     title: { de: 'Papierkorb für alles, Belichtungskorrektur, Doppelbelichtung und Feedback', en: 'Bin for everything, exposure compensation, double exposure and feedback' },
     de: {
